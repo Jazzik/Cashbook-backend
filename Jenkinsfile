@@ -1,9 +1,9 @@
 pipeline {
   agent any
   stages {
-    stage('123') {
+    stage('build') {
       steps {
-        echo '123'
+        echo 'built imitation'
       }
     }
 
