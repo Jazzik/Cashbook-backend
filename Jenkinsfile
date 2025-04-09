@@ -28,5 +28,7 @@ pipeline {
   }
   environment {
     NODE_OPTIONS = '--max_old_space_size=4096'
+    IMAGE_NAME = 'cashbook_backend'
+    CONTAINER_NAME = 'cashbook_backend_container'
   }
 }
