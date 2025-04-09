@@ -10,6 +10,15 @@ pipeline {
       }
     }
 
+    stage('Replace Current Docker Container') {
+      steps {
+        sh '''docker build -t $IMAGE_NAME .
+        docker stop $CONTAINER_NAME || true
+        docker rm $CONTAINER_NAME || true
+        docker run -d --name $CONTAINER_NAME -p 4000:80 $IMAGE_NAME'''
+      }
+    }
+
     stage('Test') {
       steps {
         echo 'test imitation'
