@@ -12,7 +12,6 @@ pipeline {
     stage('Replace Current Docker Container') {
       steps {
         sh '''
-chmod 644 /root/cashbook_vesna/service-account.json
 docker build -t $IMAGE_NAME .
 docker stop $CONTAINER_NAME || true
 docker rm $CONTAINER_NAME || true
