@@ -12,6 +12,9 @@ pipeline {
     stage('Replace Current Docker Container') {
       steps {
         sh '''
+docker build -t $IMAGE_NAME .
+docker stop $CONTAINER_NAME || true
+docker rm $CONTAINER_NAME || true
 docker run --name cashbook_backend_container \\
   -p 5000:5000 \\
   -v /root/cashbook_vesna/service-account.json:/app/credentials/service-account.json \\
