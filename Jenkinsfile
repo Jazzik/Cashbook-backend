@@ -11,10 +11,15 @@ pipeline {
 
     stage('Replace Current Docker Container') {
       steps {
-        sh '''docker build -t $IMAGE_NAME .
-        docker stop $CONTAINER_NAME || true
-        docker rm $CONTAINER_NAME || true
-        docker run --name $CONTAINER_NAME -p 5000:5000 -v /root/cashbook_vesna/service-account.json:/app/credentials/service-account.json $IMAGE_NAME'''
+        sh '''
+docker run --name cashbook_backend_container \\
+  -p 5000:5000 \\
+  -v /root/cashbook_vesna/service-account.json:/app/credentials/service-account.json \\
+  -e PORT=4000 \\
+  -e GOOGLE_SERVICE_ACCOUNT_KEY="$(cat /root/cashbook_vesna/service-account.json)" \\
+  -e SPREADSHEET_ID=$SPREADSHEET_ID \\
+  cashbook_backend
+'''
       }
     }
 
