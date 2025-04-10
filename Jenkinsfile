@@ -14,7 +14,7 @@ pipeline {
         sh '''docker build -t $IMAGE_NAME .
         docker stop $CONTAINER_NAME || true
         docker rm $CONTAINER_NAME || true
-        docker run -d --name $CONTAINER_NAME -p 5000:5000 -v /root/cashbook_vesna/service-account.json:/app/credentials/service-account.json $IMAGE_NAME'''
+        docker run --name $CONTAINER_NAME -p 5000:5000 -v /root/cashbook_vesna/service-account.json:/app/credentials/service-account.json $IMAGE_NAME'''
       }
     }
 
