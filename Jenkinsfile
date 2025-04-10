@@ -12,8 +12,11 @@ pipeline {
     stage('Replace Current Docker Container') {
       steps {
         sh '''
-docker stop $CONTAINER_NAME || true
-docker rm $CONTAINER_NAME || true
+if [ $(docker ps -a -q -f name=$CONTAINER_NAME) ]; then
+  docker stop $CONTAINER_NAME || true
+  docker rm $CONTAINER_NAME || true
+fi
+
 docker build -t $IMAGE_NAME .
 docker images
 docker run --name -d $CONTAINER_NAME\\
