@@ -47,7 +47,7 @@ docker run --name cashbook_backend_container \\
     IMAGE_NAME = 'cashbook_backend'
     CONTAINER_NAME = 'cashbook_backend_container'
     SPREADSHEET_ID = '1WyGBW5V7HrvP1K5-wfr5PhmElv4cnhekV_xfL29ni38'
-    GOOGLE_SERVICE_ACCOUNT_KEY = 'service-account.json'
+    GOOGLE_SERVICE_ACCOUNT_KEY = '/app/credentials/service-account.json'
     PORT = '5000'
   }
 }
