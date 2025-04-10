@@ -6,8 +6,7 @@ WORKDIR /app
 
 # 3. Копируем только нужные файлы
 COPY package*.json ./
-COPY ./dist /build
-
+COPY ./dist ./build
 # 4. Устанавливаем только продакшен-зависимости
 RUN npm install --only=production
 
