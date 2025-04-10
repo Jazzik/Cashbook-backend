@@ -15,7 +15,7 @@ pipeline {
 docker build -t $IMAGE_NAME .
 docker stop $CONTAINER_NAME || true
 docker rm $CONTAINER_NAME || true
-docker run --name cashbook_backend_container \\
+docker run --name -d cashbook_backend_container \\
   -p 5000:5000 \\
   -v /root/cashbook_vesna/service-account.json:/app/credentials/service-account.json \\
   -e PORT=4000 \\
