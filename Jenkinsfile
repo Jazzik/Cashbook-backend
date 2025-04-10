@@ -29,7 +29,7 @@ docker run --name -d $CONTAINER_NAME\\
 
     stage('Test') {
       steps {
-        echo 'test imitation'
+        echo 'baba'
       }
     }
 
