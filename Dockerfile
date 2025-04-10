@@ -11,4 +11,4 @@ RUN mkdir -p /app/credentials
 
 EXPOSE 4000
 
-CMD ["node", "build/index.js"]
+CMD ["node", "build/server.js"]
