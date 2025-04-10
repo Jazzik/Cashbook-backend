@@ -13,6 +13,7 @@ pipeline {
       steps {
         sh '''
 docker build -t $IMAGE_NAME .
+docker images
 docker stop $CONTAINER_NAME || true
 docker rm $CONTAINER_NAME || true
 docker run --name -d $CONTAINER_NAME\\
