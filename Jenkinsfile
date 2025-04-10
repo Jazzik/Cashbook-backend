@@ -4,7 +4,6 @@ pipeline {
     stage('build') {
       steps {
         echo 'built imitation'
-        tool 'NodeJS'
         sh 'npm install'
         sh 'npm run build'
       }
@@ -15,7 +14,7 @@ pipeline {
         sh '''docker build -t $IMAGE_NAME .
         docker stop $CONTAINER_NAME || true
         docker rm $CONTAINER_NAME || true
-        docker run -d --name $CONTAINER_NAME -p 4000:80 $IMAGE_NAME'''
+        docker run -d --name $CONTAINER_NAME -p 5001:5001 $IMAGE_NAME'''
       }
     }
 
