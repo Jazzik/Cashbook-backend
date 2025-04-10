@@ -14,7 +14,7 @@ pipeline {
         sh '''docker build -t $IMAGE_NAME .
         docker stop $CONTAINER_NAME || true
         docker rm $CONTAINER_NAME || true
-        docker run -d --name $CONTAINER_NAME -p 5001:5001 $IMAGE_NAME'''
+        docker run -d --name $CONTAINER_NAME -p 5000:5000 $IMAGE_NAME'''
       }
     }
 
@@ -38,5 +38,8 @@ pipeline {
     NODE_OPTIONS = '--max_old_space_size=4096'
     IMAGE_NAME = 'cashbook_backend'
     CONTAINER_NAME = 'cashbook_backend_container'
+    SPREADSHEET_ID = '1WyGBW5V7HrvP1K5-wfr5PhmElv4cnhekV_xfL29ni38'
+    GOOGLE_SERVICE_ACCOUNT_KEY = 'service-account.json'
+    PORT = '5000'
   }
 }
