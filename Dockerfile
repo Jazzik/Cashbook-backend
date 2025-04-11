@@ -35,8 +35,6 @@ COPY .env.example .env
 # Create directory for credentials
 RUN mkdir -p /app/credentials
 
-# Copy service account file
-COPY service-account.json ./
 
 # Copy compiled code from build stage
 COPY --from=build /app/dist ./dist
