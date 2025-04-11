@@ -19,7 +19,7 @@ fi
 
 docker build -t $IMAGE_NAME .
 docker images
-docker run --name cashbook_backend_container -d -p 5000:5000 -v /root/cashbook_vesna/service-account.json:/app/credentials/service-account.json -e PORT=5000 -e GOOGLE_SERVICE_ACCOUNT_KEY=/app/credentials/service-account.json -e SPREADSHEET_ID=1WyGBW5V7HrvP1K5-wfr5PhmElv4cnhekV_xfL29ni38 cashbook_backend
+docker run --name cashbook_backend_container -d -p %PORT:$PORT -v /root/cashbook_vesna/service-account.json:/app/credentials/service-account.json -e PORT=$PORT -e GOOGLE_SERVICE_ACCOUNT_KEY=/app/credentials/service-account.json -e SPREADSHEET_ID=$SPREADSHEET_ID cashbook_backend
 
 '''
       }
@@ -27,7 +27,7 @@ docker run --name cashbook_backend_container -d -p 5000:5000 -v /root/cashbook_v
 
     stage('Test') {
       steps {
-        echo 'baba'
+        echo '123'
       }
     }
 

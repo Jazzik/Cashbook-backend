@@ -42,11 +42,11 @@ COPY service-account.json ./
 COPY --from=build /app/dist ./dist
 
 # Environment variables
-ENV PORT=5000
+ENV PORT=$PORT
 ENV NODE_ENV=production
 
 # Expose the port the app runs on
-EXPOSE 5000
+EXPOSE $PORT
 
 # Start the application
 CMD ["node", "dist/server.js"]
