@@ -5,6 +5,9 @@ FROM node:20-alpine AS build
 # Set working directory
 WORKDIR /app
 
+# Set NODE_OPTIONS to increase memory limit for build
+ENV NODE_OPTIONS="--max-old-space-size=4096"
+
 # Copy package files for better caching
 COPY package.json package-lock.json ./
 
