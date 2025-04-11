@@ -3,14 +3,7 @@ pipeline {
   stages {
     stage('build') {
       steps {
-        echo 'built imitation'
-        sh 'npm install'
-        sh 'npm run build'
-      }
-    }
-
-    stage('Replace Current Docker Container') {
-      steps {
+        echo 'Building Docker image'
         sh '''
 if [ $(docker ps -a -q -f name=$CONTAINER_NAME) ]; then
   docker stop $CONTAINER_NAME || true
@@ -19,8 +12,14 @@ fi
 
 docker build -t $IMAGE_NAME .
 docker images
-docker run --name cashbook_backend_container --network cashbook-network -d -p %PORT:$PORT -v /root/cashbook_vesna:/app -e PORT=$PORT -e GOOGLE_SERVICE_ACCOUNT_KEY=/app/credentials/service-account.json -e SPREADSHEET_ID=$SPREADSHEET_ID cashbook_backend
+'''
+      }
+    }
 
+    stage('Deploy Container') {
+      steps {
+        sh '''
+docker run --name cashbook_backend_container --network cashbook-network -d -p %PORT:$PORT -v /root/cashbook_vesna:/app -e PORT=$PORT -e GOOGLE_SERVICE_ACCOUNT_KEY=/app/credentials/service-account.json -e SPREADSHEET_ID=$SPREADSHEET_ID cashbook_backend
 '''
       }
     }

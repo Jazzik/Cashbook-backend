@@ -5,8 +5,8 @@ FROM node:20-alpine AS build
 # Set working directory
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+# Copy package files for better caching
+COPY package.json package-lock.json ./
 
 # Install dependencies
 RUN npm ci
@@ -24,7 +24,7 @@ FROM node:20-alpine AS production
 WORKDIR /app
 
 # Copy package files
-COPY package*.json ./
+COPY package.json package-lock.json ./
 
 # Install production dependencies only
 RUN npm ci --only=production
@@ -35,16 +35,14 @@ COPY .env.example .env
 # Create directory for credentials
 RUN mkdir -p /app/credentials
 
-
 # Copy compiled code from build stage
 COPY --from=build /app/dist ./dist
 
 # Environment variables
-ENV PORT=$PORT
 ENV NODE_ENV=production
 
 # Expose the port the app runs on
-EXPOSE $PORT
+EXPOSE ${PORT:-5000}
 
 # Start the application
 CMD ["node", "dist/server.js"]
