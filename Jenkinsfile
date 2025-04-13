@@ -1,15 +1,11 @@
 pipeline {
   agent any
+
   stages {
     stage('build') {
       steps {
         echo 'Building Docker image'
         sh '''
-if [ $(docker ps -a -q -f name=$CONTAINER_NAME) ]; then
-  docker stop $CONTAINER_NAME || true
-  docker rm $CONTAINER_NAME || true
-fi
-
 # Build with enough memory allocation
 docker build --build-arg NODE_OPTIONS="--max-old-space-size=4096" -t $IMAGE_NAME .
 docker images
@@ -17,11 +13,36 @@ docker images
       }
     }
 
-    stage('Deploy Container') {
+    stage('Deploy Containers') {
       steps {
-        sh '''
-docker run --name cashbook_backend_container --network cashbook-network -d -p 127.0.0.1:$PORT:$PORT -v /root/cashbook_vesna:/app/credentials -e PORT=$PORT -e GOOGLE_SERVICE_ACCOUNT_KEY=/app/credentials/service-account.json -e SPREADSHEET_ID=$SPREADSHEET_ID cashbook_backend
-'''
+        script {
+          def shops = ['testing', 'makarov', 'yuz1' ]
+
+          shops.each { shop ->
+            withCredentials([
+              string(credentialsId: "${shop}-spreadsheet-id", variable: 'SHOP_SPREADSHEET_ID'),
+              string(credentialsId: "${shop}-port", variable: 'SHOP_PORT')
+            ]) {
+              sh """
+              # Stop and remove if container exists
+              if [ \$(docker ps -a -q -f name=${shop}_backend_container) ]; then
+                docker stop ${shop}_backend_container || true
+                docker rm ${shop}_backend_container || true
+              fi
+
+              # Run container with shop-specific parameters
+              docker run --name ${shop}_backend_container \
+                --network cashbook-network \
+                -d -p 127.0.0.1:\${SHOP_PORT}:5000 \
+                -v /root/cashbook_vesna:/app/credentials \
+                -e PORT=\${SHOP_PORT} \
+                -e GOOGLE_SERVICE_ACCOUNT_KEY=/app/credentials/${shop}-service-account.json \
+                -e SPREADSHEET_ID=\${SHOP_SPREADSHEET_ID} \
+                $IMAGE_NAME
+              """
+            }
+          }
+        }
       }
     }
 
@@ -36,7 +57,6 @@ docker run --name cashbook_backend_container --network cashbook-network -d -p 12
         echo 'deploying...'
       }
     }
-
   }
   tools {
     nodejs 'NodeJS'
@@ -44,9 +64,5 @@ docker run --name cashbook_backend_container --network cashbook-network -d -p 12
   environment {
     NODE_OPTIONS = '--max_old_space_size=4096'
     IMAGE_NAME = 'cashbook_backend'
-    CONTAINER_NAME = 'cashbook_backend_container'
-    SPREADSHEET_ID = '1WyGBW5V7HrvP1K5-wfr5PhmElv4cnhekV_xfL29ni38'
-    GOOGLE_SERVICE_ACCOUNT_KEY = '/app/credentials/service-account.json'
-    PORT = '5000'
   }
 }
