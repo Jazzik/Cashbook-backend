@@ -1,18 +1,53 @@
-# 1. Базовый образ
-FROM node:20-alpine
+# Multi-stage build for Node.js backend application
+# Build stage
+FROM node:20-alpine AS build
 
-# 2. Рабочая директория внутри контейнера
+# Set working directory
 WORKDIR /app
 
-# 3. Копируем только нужные файлы
-COPY package*.json ./
-COPY ./build ./build
+# Set NODE_OPTIONS to increase memory limit for build
+ENV NODE_OPTIONS="--max-old-space-size=4096"
 
-# 4. Устанавливаем только продакшен-зависимости
-RUN npm install --only=production
+# Copy package files for better caching
+COPY package.json package-lock.json ./
 
-# 5. Открываем порт (если нужно)
-EXPOSE 4000
+# Install dependencies
+RUN npm ci
 
-# 6. Команда для запуска приложения
-CMD ["node", "build/index.js"]
+# Copy the source code
+COPY . .
+
+# Build the application
+RUN npm run build
+
+# Production stage
+FROM node:20-alpine AS production
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package.json package-lock.json ./
+
+# Install production dependencies only
+RUN npm ci --only=production
+
+# Copy environment variables example file
+COPY .env.example .env
+
+# Create directory for credentials
+RUN mkdir -p /app/credentials
+
+# Copy compiled code from build stage
+COPY --from=build /app/dist ./dist
+
+# Environment variables
+ENV NODE_ENV=production
+
+
+# Start the application
+CMD ["node", "dist/server.js"]
+
+# For overriding build when a new version comes:
+# Use Docker volumes to mount the dist directory
+# Example: docker run -v /path/to/new/dist:/app/dist [image-name]
