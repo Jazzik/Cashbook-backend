@@ -68,7 +68,7 @@ docker images
                 -d -p 127.0.0.1:${shopPort}:${shopPort} \
                 -v /root/cashbook_vesna:/app/credentials \
                 -e PORT=${shopPort} \
-                -e GOOGLE_SERVICE_ACCOUNT_KEY=/app/credentials/${shop}-service-account.json \
+                -e GOOGLE_SERVICE_ACCOUNT_KEY=/app/credentials/service-account.json \
                 -e SPREADSHEET_ID=\${SHOP_SPREADSHEET_ID} \
                 $IMAGE_NAME
               """
