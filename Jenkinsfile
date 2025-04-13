@@ -2,6 +2,24 @@ pipeline {
   agent any
 
   stages {
+    stage('Configure') {
+      steps {
+        script {
+          // Set shop list based on branch
+          if (env.BRANCH_NAME == 'test') {
+            env.SHOPS = 'testing'
+            echo "Configured for test environment: ${env.SHOPS}"
+          } else if (env.BRANCH_NAME == 'main') {
+            env.SHOPS = 'makarov,yuz1'
+            echo "Configured for production environments: ${env.SHOPS}"
+          } else {
+            echo "Branch ${env.BRANCH_NAME} not configured for deployment"
+            env.SHOPS = ''
+          }
+        }
+      }
+    }
+
     stage('build') {
       steps {
         echo 'Building Docker image'
@@ -14,11 +32,14 @@ docker images
     }
 
     stage('Deploy Containers') {
+      when {
+        expression { return env.SHOPS != '' }
+      }
       steps {
         script {
-          def shops = ['testing', 'makarov', 'yuz1' ]
+          def shopsList = env.SHOPS.split(',')
 
-          shops.each { shop ->
+          shopsList.each { shop ->
             withCredentials([
               string(credentialsId: "${shop}-spreadsheet-id", variable: 'SHOP_SPREADSHEET_ID'),
               string(credentialsId: "${shop}-port", variable: 'SHOP_PORT')
@@ -47,16 +68,31 @@ docker images
     }
 
     stage('Test') {
+      when {
+        expression { return env.SHOPS != '' }
+      }
       steps {
-        echo '123'
+        script {
+          // Add a short delay to allow containers to start up properly
+          sleep 10
+
+          def shopsList = env.SHOPS.split(',')
+
+          shopsList.each { shop ->
+            withCredentials([
+              string(credentialsId: "${shop}-port", variable: 'SHOP_PORT')
+            ]) {
+              echo "Checking health for ${shop} on port ${SHOP_PORT}"
+              sh """
+                # Health check with curl - will fail the build if health check fails
+                curl -f http://127.0.0.1:\${SHOP_PORT}/api/health
+              """
+            }
+          }
+        }
       }
     }
 
-    stage('Deploy') {
-      steps {
-        echo 'deploying...'
-      }
-    }
   }
   tools {
     nodejs 'NodeJS'
