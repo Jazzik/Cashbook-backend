@@ -90,20 +90,8 @@ docker images
             def shopPort = env."${shop.toUpperCase()}_PORT"
             echo "Checking health for ${shop} on port ${shopPort}"
 
-            // Use catchError to prevent build failure if health check fails
-            catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
-              sh """
-                # Health check with container logs as fallback
-                if ! curl -s -f http://127.0.0.1:${shopPort}/api/health; then
-                  echo "Health check failed for ${shop}, checking container status:"
-                  docker ps | grep ${shop}_backend_container
-                  echo "Recent container logs:"
-                  docker logs --tail 20 ${shop}_backend_container
-                else
-                  echo "Health check passed for ${shop}"
-                fi
-              """
-            }
+            // Simple health check that will fail the build if the request fails
+            sh "curl -s -f -m 10 http://127.0.0.1:${shopPort}/api/health"
           }
         }
       }
