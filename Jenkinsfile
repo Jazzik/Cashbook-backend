@@ -33,7 +33,7 @@ docker images
               # Run container with shop-specific parameters
               docker run --name ${shop}_backend_container \
                 --network cashbook-network \
-                -d -p 127.0.0.1:\${SHOP_PORT}:5000 \
+                -d -p 127.0.0.1:\${SHOP_PORT}:\${SHOP_PORT} \
                 -v /root/cashbook_vesna:/app/credentials \
                 -e PORT=\${SHOP_PORT} \
                 -e GOOGLE_SERVICE_ACCOUNT_KEY=/app/credentials/${shop}-service-account.json \
