@@ -8,12 +8,15 @@ pipeline {
           // Set shop list based on branch
           if (env.BRANCH_NAME == 'test') {
             env.SHOPS = 'testing'
-            env.TESTING_PORT = '3999'
+            // PORT env variables follow naming convention: SHOPNAME_PORT (uppercase)
+            env.TESTING_PORT = '3999'  // Port for testing shop
             echo "Configured for test environment: ${env.SHOPS}"
           } else if (env.BRANCH_NAME == 'main') {
             env.SHOPS = 'makarov,yuz1'
-            env.MAKAROV_PORT = '5000'
-            env.YUZ1_PORT = '5001'
+            // Each shop needs its corresponding PORT env var in uppercase
+            // These variables are dynamically looked up later using: env."${shop.toUpperCase()}_PORT"
+            env.MAKAROV_PORT = '5000'  // Port for makarov shop
+            env.YUZ1_PORT = '5001'     // Port for yuz1 shop
             echo "Configured for production environments: ${env.SHOPS}"
           } else {
             echo "Branch ${env.BRANCH_NAME} not configured for deployment"
@@ -43,7 +46,9 @@ docker images
           def shopsList = env.SHOPS.split(',')
 
           shopsList.each { shop ->
-            // Get port from environment variable
+            // Dynamic lookup of port from environment variables
+            // Example: shop="makarov" -> looks for env.MAKAROV_PORT
+            //          shop="yuz1" -> looks for env.YUZ1_PORT
             def shopPort = env."${shop.toUpperCase()}_PORT"
             echo "Deploying ${shop} on port ${shopPort}"
 
@@ -86,7 +91,9 @@ docker images
           def shopsList = env.SHOPS.split(',')
 
           shopsList.each { shop ->
-            // Get port from environment variable
+            // Dynamic port lookup using Groovy's property access feature
+            // For each shop name, it converts to uppercase and appends _PORT
+            // Example: "makarov" -> env.MAKAROV_PORT
             def shopPort = env."${shop.toUpperCase()}_PORT"
             echo "Checking health for ${shop} on port ${shopPort}"
 
