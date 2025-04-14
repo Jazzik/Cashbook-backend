@@ -98,7 +98,7 @@ docker images
             echo "Checking health for ${shop} on port ${shopPort}"
 
             // Simple health check that will fail the build if the request fails
-            sh "curl -s -f -m 10 http://127.0.0.1:${shopPort}/api/health"
+            sh "docker exec ${shop}_frontend_container curl -f -m 10 http://${shop}_backend_container:${shopPort}/api/health"
           }
         }
       }
