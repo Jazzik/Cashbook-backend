@@ -13,23 +13,23 @@
 
 ## 📚 Table of Contents
 
-- [Overview](#overview)
-- [Features](#features)
-- [Directory Structure](#directory-structure)
-- [Setup Instructions](#setup-instructions)
+- [Overview](#-overview)
+- [Features](#-features)
+- [Directory Structure](#-directory-structure)
+- [Setup Instructions](#️-setup-instructions)
   - [Prerequisites](#prerequisites)
   - [Clone the Repository](#1-clone-the-repository)
   - [Install Dependencies](#2-install-dependencies)
   - [Configure Environment Variables](#3-configure-environment-variables)
   - [Build and Run Locally](#4-build-and-run-locally)
-- [Docker Usage](#docker-usage)
-- [Jenkins CI/CD Pipeline](#jenkins-cicd-pipeline)
-- [API Endpoints](#api-endpoints)
-- [Google Sheets Integration](#google-sheets-integration)
-- [Error Handling](#error-handling)
-- [TypeScript Configuration](#typescript-configuration)
-- [Troubleshooting](#troubleshooting)
-- [License](#license)
+- [Docker Usage](#-docker-usage)
+- [Jenkins CI/CD Pipeline](#-jenkins-cicd-pipeline)
+- [API Endpoints](#-api-endpoints)
+- [Google Sheets Integration](#-google-sheets-integration)
+- [Error Handling](#️-error-handling)
+- [TypeScript Configuration](#-typescript-configuration)
+- [Troubleshooting](#-troubleshooting)
+- [License](#-license)
 
 ---
 
