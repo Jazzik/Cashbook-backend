@@ -83,15 +83,15 @@ pipeline {
             def shopPort = this."${shop.toUpperCase()}_PORT"
             echo "Deploying ${shop} on port ${shopPort}"
             withCredentials([
-              string(credentialsId: "${shop}-spreadsheet-id", variable: 'SHOP_SPREADSHEET_ID'), 
+              string(credentialsId: "${shop}-spreadsheet-id", variable: 'SHOP_SPREADSHEET_ID'),
               file(credentialsId: 'service-account', variable: 'GOOGLE_SERVICE_ACCOUNT_FILE')
             ]) {
               bat """
-                # Stop and remove if container exists
-                if [ \$(docker ps -a -q -f name=${shop}_backend_container) ]; then
-                  docker stop ${shop}_backend_container || true
-                  docker rm ${shop}_backend_container || true
-                fi
+                REM Stop and remove if container exists
+                for /f %%i in ('docker ps -a -q -f name=${shop}_backend_container') do (
+                  docker stop ${shop}_backend_container || exit /b 0
+                  docker rm ${shop}_backend_container || exit /b 0
+                )
               """
               bat """
                 docker run --name ${shop}_backend_container \
@@ -119,11 +119,11 @@ pipeline {
               curl -f -m 10 http://127.0.0.1:${shopPort}/api/health
             """
             bat """
-              # Stop and remove if container exists
-              if [ \$(docker ps -a -q -f name=${shop}_backend_container) ]; then
-                docker stop ${shop}_backend_container || true
-                docker rm ${shop}_backend_container || true
-              fi
+              REM Stop and remove if container exists
+              for /f %%i in ('docker ps -a -q -f name=${shop}_backend_container') do (
+                docker stop ${shop}_backend_container || exit /b 0
+                docker rm ${shop}_backend_container || exit /b 0
+              )
             """
           }
         }
@@ -179,7 +179,7 @@ pipeline {
               fi
               """
 
-              bat """
+              sh """
                 docker run --name ${shop}_backend_container \
                   --network cashbook-network \
                   -d -p 127.0.0.1:${shopPort}:${shopPort} \
@@ -211,7 +211,7 @@ pipeline {
           shopsList.each { shop ->
             def shopPort = this."${shop.toUpperCase()}_PORT"
             echo "Checking health for ${shop} on port ${shopPort}"
-            bat """
+            sh """
               docker exec ${shop}_frontend_container curl -f -m 10 \
               http://${shop}_backend_container:${shopPort}/api/health
             """
