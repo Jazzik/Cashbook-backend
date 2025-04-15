@@ -1,57 +1,164 @@
 pipeline {
-  agent any
+  agent none  // Pipeline starts on any available node
+
+  environment {
+    IMAGE_NAME = 'cashbook_backend'
+    DOCKER_REGISTRY = credentials('DOCKER_REGISTRY') //jenkins credentials
+    DOCKER_PASSWORD = credentials('DOCKER_PASSWORD') //jenkins credentials
+    COMMIT_HASH = "${GIT_COMMIT}"  // Use commit hash for tagging
+    DOCKER_IMAGE_TAG = 'latest'   // Also push as 'latest'
+  }
 
   stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+        stash name: 'source-code', includes: '**/*'
+      }
+    }
     stage('Configure') {
+      agent { label 'build-node' }
       steps {
         script {
-          // Set shop list based on branch
+          // Set shop list and ports based on branch
+          def envVars = ''
           if (env.BRANCH_NAME == 'test') {
             env.SHOPS = 'testing'
-            // PORT env variables follow naming convention: SHOPNAME_PORT (uppercase)
-            env.TESTING_PORT = '3999'  // Port for testing shop
+            env.TESTING_PORT = '3999'
             echo "Configured for test environment: ${env.SHOPS}"
+            envVars = """
+            SHOPS='${env.SHOPS}'
+            TESTING_PORT='${env.TESTING_PORT}'
+            """
           } else if (env.BRANCH_NAME == 'main') {
             env.SHOPS = 'makarov,yuz1'
-            // Each shop needs its corresponding PORT env var in uppercase
-            // These variables are dynamically looked up later using: env."${shop.toUpperCase()}_PORT"
-            env.MAKAROV_PORT = '5000'  // Port for makarov shop
-            env.YUZ1_PORT = '5001'     // Port for yuz1 shop
+            env.MAKAROV_PORT = '5000'
+            env.YUZ1_PORT = '5001'
             echo "Configured for production environments: ${env.SHOPS}"
+            envVars = """
+            SHOPS='${env.SHOPS}'
+            MAKAROV_PORT='${env.MAKAROV_PORT}'
+            YUZ1_PORT='${env.YUZ1_PORT}'
+            """
           } else {
             echo "Branch ${env.BRANCH_NAME} not configured for deployment"
             env.SHOPS = ''
+            envVars = "SHOPS=''\n"
+          }
+          // Write dynamic env vars to file and stash for later stages
+          writeFile file: 'jenkins_env.groovy', text: envVars
+          stash name: 'jenkins-env', includes: 'jenkins_env.groovy'
+        }
+      }
+    }
+
+    stage('Build Docker Image') {
+      agent { label 'build-node' }
+      when {
+        branch 'test'
+      }
+      steps {
+        echo 'Building Docker image'
+        sh """
+          docker build --build-arg NODE_OPTIONS="--max-old-space-size=4096" -t $DOCKER_REGISTRY/$IMAGE_NAME:$COMMIT_HASH -t $DOCKER_REGISTRY/$IMAGE_NAME:$DOCKER_IMAGE_TAG .
+          docker images
+        """
+      }
+    }
+
+    stage('Test container in test environment') {
+      agent { label 'build-node' }
+      when {
+        branch 'test'
+      }
+      steps {
+        unstash 'jenkins-env'
+        script {
+          def envVars = readFile('jenkins_env.groovy')
+          evaluate(envVars)
+          def shopsList = SHOPS.split(',')
+          // Deploy containers
+          shopsList.each { shop ->
+            def shopPort = this."${shop.toUpperCase()}_PORT"
+            echo "Deploying ${shop} on port ${shopPort}"
+            withCredentials([
+              string(credentialsId: "${shop}-spreadsheet-id", variable: 'SHOP_SPREADSHEET_ID')
+            ]) {
+              sh """
+                docker run --name ${shop}_backend_container \
+                  --network cashbook-network \
+                  -d -p 127.0.0.1:${shopPort}:${shopPort} \
+                  -v /root/cashbook_vesna:/app/credentials \
+                  -e PORT=${shopPort} \
+                  -e GOOGLE_SERVICE_ACCOUNT_KEY=/app/credentials/service-account.json \
+                  -e SPREADSHEET_ID=\${SHOP_SPREADSHEET_ID} \
+                  $DOCKER_REGISTRY/$IMAGE_NAME:$DOCKER_IMAGE_TAG
+              """
+            }
+          }
+        }
+        script {
+          echo 'Waiting for containers to initialize...'
+          sleep 10
+          def envVars = readFile('jenkins_env.groovy')
+          evaluate(envVars)
+          def shopsList = SHOPS.split(',')
+          shopsList.each { shop ->
+            def shopPort = this."${shop.toUpperCase()}_PORT"
+            echo "Checking health for ${shop} on port ${shopPort}"
+            sh """
+              curl -f -m 10 http://127.0.0.1:${shopPort}/api/health
+            """
+            sh """
+              # Stop and remove if container exists
+              if [ \$(docker ps -a -q -f name=${shop}_backend_container) ]; then
+                docker stop ${shop}_backend_container || true
+                docker rm ${shop}_backend_container || true
+              fi
+            """
           }
         }
       }
     }
 
-    stage('build') {
+    stage('Push to Docker Hub') {
+      when {
+        branch 'test'
+      }
+      agent { label 'build-node' }
       steps {
-        echo 'Building Docker image'
-        sh '''
-# Build with enough memory allocation
-docker build --build-arg NODE_OPTIONS="--max-old-space-size=4096" -t $IMAGE_NAME .
-docker images
-'''
+        echo 'Pushing Docker image to Docker Hub'
+        sh """
+          docker login -u $DOCKER_REGISTRY -p $DOCKER_PASSWORD
+          docker push $DOCKER_REGISTRY/$IMAGE_NAME:$COMMIT_HASH
+          docker push $DOCKER_REGISTRY/$IMAGE_NAME:$DOCKER_IMAGE_TAG
+        """
       }
     }
 
     stage('Deploy Containers') {
+      agent { label 'deploy-node' }
       when {
-        expression { return env.SHOPS != '' }
+        branch 'main'
       }
       steps {
+        unstash 'source-code'
+        unstash 'jenkins-env'
         script {
-          def shopsList = env.SHOPS.split(',')
+          // Load dynamic env vars
+          def envVars = readFile('jenkins_env.groovy')
+          evaluate(envVars)
 
+          // Pull the image using the latest tag
+          sh """
+            # Pull the image using the latest tag
+            docker pull $DOCKER_REGISTRY/$IMAGE_NAME:$DOCKER_IMAGE_TAG
+            """
+          // Deploy containers
+          def shopsList = SHOPS.split(',')
           shopsList.each { shop ->
-            // Dynamic lookup of port from environment variables
-            // Example: shop="makarov" -> looks for env.MAKAROV_PORT
-            //          shop="yuz1" -> looks for env.YUZ1_PORT
-            def shopPort = env."${shop.toUpperCase()}_PORT"
+            def shopPort = this."${shop.toUpperCase()}_PORT"
             echo "Deploying ${shop} on port ${shopPort}"
-
             withCredentials([
               string(credentialsId: "${shop}-spreadsheet-id", variable: 'SHOP_SPREADSHEET_ID')
             ]) {
@@ -61,16 +168,17 @@ docker images
                 docker stop ${shop}_backend_container || true
                 docker rm ${shop}_backend_container || true
               fi
+              """
 
-              # Run container with shop-specific parameters
-              docker run --name ${shop}_backend_container \
-                --network cashbook-network \
-                -d -p 127.0.0.1:${shopPort}:${shopPort} \
-                -v /root/cashbook_vesna:/app/credentials \
-                -e PORT=${shopPort} \
-                -e GOOGLE_SERVICE_ACCOUNT_KEY=/app/credentials/service-account.json \
-                -e SPREADSHEET_ID=\${SHOP_SPREADSHEET_ID} \
-                $IMAGE_NAME
+              sh """
+                docker run --name ${shop}_backend_container \
+                  --network cashbook-network \
+                  -d -p 127.0.0.1:${shopPort}:${shopPort} \
+                  -v /root/cashbook_vesna:/app/credentials \
+                  -e PORT=${shopPort} \
+                  -e GOOGLE_SERVICE_ACCOUNT_KEY=/app/credentials/service-account.json \
+                  -e SPREADSHEET_ID=\${SHOP_SPREADSHEET_ID} \
+                  $DOCKER_REGISTRY/$IMAGE_NAME:$DOCKER_IMAGE_TAG
               """
             }
           }
@@ -78,26 +186,22 @@ docker images
       }
     }
 
-    stage('Test') {
+    stage('Test container in production environment') {
+      agent { label 'deploy-node' }
       when {
-        expression { return env.SHOPS != '' }
+        branch 'main'
       }
       steps {
+        unstash 'jenkins-env'
         script {
-          // Add a longer delay to allow containers to start up properly
           echo 'Waiting for containers to initialize...'
-          sleep 20
-
-          def shopsList = env.SHOPS.split(',')
-
+          sleep 10
+          def envVars = readFile('jenkins_env.groovy')
+          evaluate(envVars)
+          def shopsList = SHOPS.split(',')
           shopsList.each { shop ->
-            // Dynamic port lookup using Groovy's property access feature
-            // For each shop name, it converts to uppercase and appends _PORT
-            // Example: "makarov" -> env.MAKAROV_PORT
-            def shopPort = env."${shop.toUpperCase()}_PORT"
+            def shopPort = this."${shop.toUpperCase()}_PORT"
             echo "Checking health for ${shop} on port ${shopPort}"
-
-            // Simple health check that will fail the build if the request fails
             sh """
               docker exec ${shop}_frontend_container curl -f -m 10 \
               http://${shop}_backend_container:${shopPort}/api/health
@@ -107,11 +211,8 @@ docker images
       }
     }
   }
+
   tools {
     nodejs 'NodeJS'
-  }
-  environment {
-    NODE_OPTIONS = '--max_old_space_size=4096'
-    IMAGE_NAME = 'cashbook_backend'
   }
 }
