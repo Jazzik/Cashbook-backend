@@ -157,7 +157,7 @@ pipeline {
           evaluate(envVars)
 
           // Pull the image using the latest tag
-          bat """
+          sh """
             # Pull the image using the latest tag
             docker pull $DOCKER_REGISTRY/$IMAGE_NAME:$DOCKER_IMAGE_TAG
             """
