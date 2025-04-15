@@ -114,8 +114,14 @@ npm run dev
 Build and run the service in a container:
 
 ```sh
-docker build -t cashbook_backend .
-docker run --env-file .env -p 5000:5000 cashbook_backend
+docker run --name ${shop}_backend_container \
+                --network cashbook-network \
+                -d -p 127.0.0.1:${shopPort}:${shopPort} \
+                -v /root/cashbook_vesna:/app/credentials \
+                -e PORT=${shopPort} \
+                -e GOOGLE_SERVICE_ACCOUNT_KEY=/app/credentials/service-account.json \
+                -e SPREADSHEET_ID=\${SHOP_SPREADSHEET_ID} \
+                $IMAGE_NAME
 ```
 
 ## 🤖 Jenkins CI/CD Pipeline
