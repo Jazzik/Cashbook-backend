@@ -88,7 +88,7 @@ pipeline {
             ]) {
               bat """
                 REM Stop and remove if container exists
-                for /f %%i in ('docker ps -a -q -f name=${shop}_backend_container') do (
+                for /F %i in ('docker ps -a -q -f name=${shop}_backend_container') do (
                   docker stop ${shop}_backend_container || exit /b 0
                   docker rm ${shop}_backend_container || exit /b 0
                 )
@@ -120,7 +120,7 @@ pipeline {
             """
             bat """
               REM Stop and remove if container exists
-              for /f %%i in ('docker ps -a -q -f name=${shop}_backend_container') do (
+              for /F %i in ('docker ps -a -q -f name=${shop}_backend_container') do (
                 docker stop ${shop}_backend_container || exit /b 0
                 docker rm ${shop}_backend_container || exit /b 0
               )
