@@ -86,6 +86,10 @@ pipeline {
               string(credentialsId: "${shop}-spreadsheet-id", variable: 'SHOP_SPREADSHEET_ID'),
               file(credentialsId: 'service-account', variable: 'GOOGLE_SERVICE_ACCOUNT_FILE')
             ]) {
+              bat '''
+                REM Ensure Docker network exists
+                docker network inspect cashbook-network || docker network create cashbook-network
+              '''
               bat """
                 REM Stop and remove if container exists
                 docker rm -f ${shop}_backend_container || exit /b 0
@@ -165,6 +169,10 @@ pipeline {
             withCredentials([
               string(credentialsId: "${shop}-spreadsheet-id", variable: 'SHOP_SPREADSHEET_ID')
             ]) {
+              sh '''
+              # Ensure Docker network exists
+              docker network inspect cashbook-network || docker network create cashbook-network
+              '''
               sh """
               # Stop and remove if container exists
               docker rm -f ${shop}_backend_container || exit /b 0
