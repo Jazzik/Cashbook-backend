@@ -60,7 +60,7 @@ pipeline {
       }
       steps {
         echo 'Building Docker image'
-        sh """
+        bat """
           docker build --build-arg NODE_OPTIONS="--max-old-space-size=4096" -t $DOCKER_REGISTRY/$IMAGE_NAME:$COMMIT_HASH -t $DOCKER_REGISTRY/$IMAGE_NAME:$DOCKER_IMAGE_TAG .
           docker images
         """
@@ -85,7 +85,7 @@ pipeline {
             withCredentials([
               string(credentialsId: "${shop}-spreadsheet-id", variable: 'SHOP_SPREADSHEET_ID')
             ]) {
-              sh """
+              bat """
                 docker run --name ${shop}_backend_container \
                   --network cashbook-network \
                   -d -p 127.0.0.1:${shopPort}:${shopPort} \
@@ -107,10 +107,10 @@ pipeline {
           shopsList.each { shop ->
             def shopPort = this."${shop.toUpperCase()}_PORT"
             echo "Checking health for ${shop} on port ${shopPort}"
-            sh """
+            bat """
               curl -f -m 10 http://127.0.0.1:${shopPort}/api/health
             """
-            sh """
+            bat """
               # Stop and remove if container exists
               if [ \$(docker ps -a -q -f name=${shop}_backend_container) ]; then
                 docker stop ${shop}_backend_container || true
@@ -129,7 +129,7 @@ pipeline {
       agent { label 'build-node' }
       steps {
         echo 'Pushing Docker image to Docker Hub'
-        sh """
+        bat """
           docker login -u $DOCKER_REGISTRY -p $DOCKER_PASSWORD
           docker push $DOCKER_REGISTRY/$IMAGE_NAME:$COMMIT_HASH
           docker push $DOCKER_REGISTRY/$IMAGE_NAME:$DOCKER_IMAGE_TAG
@@ -151,7 +151,7 @@ pipeline {
           evaluate(envVars)
 
           // Pull the image using the latest tag
-          sh """
+          bat """
             # Pull the image using the latest tag
             docker pull $DOCKER_REGISTRY/$IMAGE_NAME:$DOCKER_IMAGE_TAG
             """
@@ -163,7 +163,7 @@ pipeline {
             withCredentials([
               string(credentialsId: "${shop}-spreadsheet-id", variable: 'SHOP_SPREADSHEET_ID')
             ]) {
-              sh """
+              bat """
               # Stop and remove if container exists
               if [ \$(docker ps -a -q -f name=${shop}_backend_container) ]; then
                 docker stop ${shop}_backend_container || true
@@ -171,7 +171,7 @@ pipeline {
               fi
               """
 
-              sh """
+              bat """
                 docker run --name ${shop}_backend_container \
                   --network cashbook-network \
                   -d -p 127.0.0.1:${shopPort}:${shopPort} \
@@ -203,7 +203,7 @@ pipeline {
           shopsList.each { shop ->
             def shopPort = this."${shop.toUpperCase()}_PORT"
             echo "Checking health for ${shop} on port ${shopPort}"
-            sh """
+            bat """
               docker exec ${shop}_frontend_container curl -f -m 10 \
               http://${shop}_backend_container:${shopPort}/api/health
             """
