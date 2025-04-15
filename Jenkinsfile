@@ -11,6 +11,7 @@ pipeline {
 
   stages {
     stage('Checkout') {
+      agent { label 'build-node' }
       steps {
         checkout scm
         stash name: 'source-code', includes: '**/*'
