@@ -87,6 +87,13 @@ pipeline {
               file(credentialsId: 'service-account', variable: 'GOOGLE_SERVICE_ACCOUNT_FILE')
             ]) {
               bat """
+                # Stop and remove if container exists
+                if [ \$(docker ps -a -q -f name=${shop}_backend_container) ]; then
+                  docker stop ${shop}_backend_container || true
+                  docker rm ${shop}_backend_container || true
+                fi
+              """
+              bat """
                 docker run --name ${shop}_backend_container \
                   --network cashbook-network \
                   -d -p 127.0.0.1:${shopPort}:${shopPort} \
