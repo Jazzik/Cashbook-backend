@@ -88,10 +88,7 @@ pipeline {
             ]) {
               bat """
                 REM Stop and remove if container exists
-                for /F %%i in ('docker ps -a -q -f name=${shop}_backend_container') do (
-                  docker stop ${shop}_backend_container || exit /b 0
-                  docker rm ${shop}_backend_container || exit /b 0
-                )
+                docker rm -f ${shop}_backend_container || exit /b 0
               """
               bat """
                 docker run --name ${shop}_backend_container \
@@ -120,10 +117,7 @@ pipeline {
             """
             bat """
               REM Stop and remove if container exists
-              for /F %%i in ('docker ps -a -q -f name=${shop}_backend_container') do (
-                docker stop ${shop}_backend_container || exit /b 0
-                docker rm ${shop}_backend_container || exit /b 0
-              )
+              docker rm -f ${shop}_backend_container || exit /b 0
             """
           }
         }
@@ -171,12 +165,9 @@ pipeline {
             withCredentials([
               string(credentialsId: "${shop}-spreadsheet-id", variable: 'SHOP_SPREADSHEET_ID')
             ]) {
-              bat """
+              sh """
               # Stop and remove if container exists
-              if [ \$(docker ps -a -q -f name=${shop}_backend_container) ]; then
-                docker stop ${shop}_backend_container || true
-                docker rm ${shop}_backend_container || true
-              fi
+              docker rm -f ${shop}_backend_container || exit /b 0
               """
 
               sh """
