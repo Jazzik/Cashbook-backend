@@ -78,12 +78,12 @@ pipeline {
         script {
           try {
             echo 'Building Docker image'
-            bat """
+            bat '''
               docker build --build-arg NODE_OPTIONS="--max-old-space-size=4096" ^
-                -t $DOCKER_REGISTRY/$IMAGE_NAME:$COMMIT_HASH ^
-                -t $DOCKER_REGISTRY/$IMAGE_NAME:$DOCKER_IMAGE_TAG .
-            """
-            bat 'docker images | findstr $IMAGE_NAME'
+                -t %DOCKER_REGISTRY%/%IMAGE_NAME%:%COMMIT_HASH% ^
+                -t %DOCKER_REGISTRY%/%IMAGE_NAME%:%DOCKER_IMAGE_TAG% .
+            '''
+            bat 'docker images | findstr %IMAGE_NAME%'
             echo 'Docker image built successfully'
           } catch (Exception e) {
             echo "Error building Docker image: ${e.getMessage()}"
@@ -132,7 +132,7 @@ pipeline {
                     -e PORT=${shopPort} ^
                     -e GOOGLE_SERVICE_ACCOUNT_KEY=/app/credentials/service-account.json ^
                     -e SPREADSHEET_ID=%SHOP_SPREADSHEET_ID% ^
-                    $DOCKER_REGISTRY/$IMAGE_NAME:$DOCKER_IMAGE_TAG
+                    %DOCKER_REGISTRY%/%IMAGE_NAME%:%DOCKER_IMAGE_TAG%
                 """
               }
             }
@@ -201,11 +201,11 @@ pipeline {
         script {
           try {
             echo 'Pushing Docker image to Docker Hub'
-            bat """
-              docker login -u $DOCKER_REGISTRY -p $DOCKER_PASSWORD
-              docker push $DOCKER_REGISTRY/$IMAGE_NAME:$COMMIT_HASH
-              docker push $DOCKER_REGISTRY/$IMAGE_NAME:$DOCKER_IMAGE_TAG
-            """
+            bat '''
+              docker login -u %DOCKER_REGISTRY% -p %DOCKER_PASSWORD%
+              docker push %DOCKER_REGISTRY%/%IMAGE_NAME%:%COMMIT_HASH%
+              docker push %DOCKER_REGISTRY%/%IMAGE_NAME%:%DOCKER_IMAGE_TAG%
+            '''
             echo 'Docker images pushed successfully'
           } catch (Exception e) {
             echo "Error pushing Docker images: ${e.getMessage()}"
@@ -231,10 +231,10 @@ pipeline {
             evaluate(envVars)
 
             // Pull the image using the latest tag
-            bat """
+            bat '''
               REM Pull the image using the latest tag
-              docker pull $DOCKER_REGISTRY/$IMAGE_NAME:$DOCKER_IMAGE_TAG
-            """
+              docker pull %DOCKER_REGISTRY%/%IMAGE_NAME%:%DOCKER_IMAGE_TAG%
+            '''
 
             // Deploy containers
             def shopsList = SHOPS.split(',')
@@ -262,7 +262,7 @@ pipeline {
                     -e PORT=${shopPort} ^
                     -e GOOGLE_SERVICE_ACCOUNT_KEY=/app/credentials/service-account.json ^
                     -e SPREADSHEET_ID=%SHOP_SPREADSHEET_ID% ^
-                    $DOCKER_REGISTRY/$IMAGE_NAME:$DOCKER_IMAGE_TAG
+                    %DOCKER_REGISTRY%/%IMAGE_NAME%:%DOCKER_IMAGE_TAG%
                 """
               }
             }
