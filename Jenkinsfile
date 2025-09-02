@@ -5,7 +5,6 @@ pipeline {
     IMAGE_NAME = 'cashbook_backend'
     DOCKER_REGISTRY = credentials('DOCKER_REGISTRY') //jenkins credentials
     DOCKER_PASSWORD = credentials('DOCKER_PASSWORD') //jenkins credentials
-    // COMMIT_HASH = "${GIT_COMMIT}"  // Use commit hash for tagging (removed, will set later)
     DOCKER_IMAGE_TAG = 'latest'   // Also push as 'latest'
   }
 

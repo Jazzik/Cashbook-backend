@@ -94,7 +94,7 @@ app.post('/api/shift-data', async (req, res) => {
 
         console.log('=== Подробные данные для Google Sheets ===');
         console.log('A. Дата:', date);
-        console.log('B. Начальное сальдо:', initialBalance.total);
+        console.log('B. Начальный остаток:', initialBalance.total);
         console.log('C. Терминал:', terminal);
         console.log('D. Возвраты по терминалу:', terminalReturns);
         console.log('E. Переводы на карту:', terminalTransfer);
@@ -103,7 +103,7 @@ app.post('/api/shift-data', async (req, res) => {
         console.log('H. Возвраты наличными:', cashReturnsFormatted);
         console.log('I. Внесения наличных:', cashDepositsFormatted);
         console.log('J. Выемка из кассы:', cashWithdrawal.total);
-        console.log('K. Конечное сальдо:', finalBalance);
+        console.log('K. Конечный остаток:', finalBalance);
         console.log('L. Наличная выручка:', cashRevenue);
         console.log('======================================');
 
