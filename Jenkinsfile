@@ -216,6 +216,130 @@ pipeline {
       }
     }
 
+    stage('Deploy to Production') {
+      when {
+        branch 'test'
+      }
+      agent { label 'build-node' }
+      steps {
+        input message: 'Deploy to Production?', ok: 'Deploy', parameters: [
+          choice(name: 'DEPLOY_ACTION', choices: ['Deploy', 'Skip'], description: 'Choose deployment action')
+        ]
+        script {
+          if (params.DEPLOY_ACTION == 'Skip') {
+            echo 'Production deployment skipped by user'
+            return
+          }
+          
+          try {
+            echo 'Deploying tested version to production'
+            
+            // Pull the tested image
+            bat '''
+              docker pull %DOCKER_REGISTRY%/%IMAGE_NAME%:%DOCKER_IMAGE_TAG%
+            '''
+            
+            // Load environment variables for production
+            unstash 'jenkins-env'
+            def envVars = readFile('jenkins_env.groovy')
+            evaluate(envVars)
+            
+            // Set production environment variables
+            env.SHOPS = 'makarov,yuz1'
+            env.MAKAROV_PORT = '5000'
+            env.YUZ1_PORT = '5001'
+            
+            // Deploy to production
+            def shopsList = env.SHOPS.split(',')
+            shopsList.each { shop ->
+              def shopPort = env."${shop.toUpperCase()}_PORT"
+              echo "Deploying ${shop} to production on port ${shopPort}"
+
+              withCredentials([
+                string(credentialsId: "${shop}-spreadsheet-id", variable: 'SHOP_SPREADSHEET_ID')
+              ]) {
+                bat '''
+                REM Ensure Docker network exists
+                docker network inspect cashbook-network || docker network create cashbook-network
+                '''
+                bat """
+                REM Stop and remove if container exists
+                docker rm -f ${shop}_backend_container || exit /b 0
+                """
+
+                bat """
+                  docker run --name ${shop}_backend_container ^
+                    --network cashbook-network ^
+                    -d -p 127.0.0.1:${shopPort}:${shopPort} ^
+                    -v C:\\cashbook_vesna:/app/credentials ^
+                    -e PORT=${shopPort} ^
+                    -e GOOGLE_SERVICE_ACCOUNT_KEY=/app/credentials/service-account.json ^
+                    -e SPREADSHEET_ID=%SHOP_SPREADSHEET_ID% ^
+                    %DOCKER_REGISTRY%/%IMAGE_NAME%:%DOCKER_IMAGE_TAG%
+                """
+              }
+            }
+            
+            echo 'Production deployment completed successfully'
+          } catch (Exception e) {
+            echo "Error in production deployment: ${e.getMessage()}"
+            currentBuild.result = 'FAILURE'
+            throw e
+          }
+        }
+      }
+    }
+
+    stage('Test Production Deployment') {
+      when {
+        branch 'test'
+      }
+      agent { label 'build-node' }
+      steps {
+        script {
+          try {
+            echo 'Testing production deployment'
+            bat 'timeout /t 10 /nobreak' // Give containers time to start
+            
+            // Test production deployment
+            def shopsList = env.SHOPS.split(',')
+            shopsList.each { shop ->
+              def shopPort = env."${shop.toUpperCase()}_PORT"
+              echo "Testing production deployment for ${shop} on port ${shopPort}"
+              
+              def healthCheckPassed = false
+              def maxRetries = 3
+              def retryCount = 0
+
+              while (!healthCheckPassed && retryCount < maxRetries) {
+                try {
+                  bat """
+                    curl -f -m 10 http://127.0.0.1:${shopPort}/api/health
+                  """
+                  healthCheckPassed = true
+                  echo "Production health check passed for ${shop}"
+                } catch (Exception e) {
+                  retryCount++
+                  echo "Production health check failed for ${shop}, attempt ${retryCount}/${maxRetries}: ${e.getMessage()}"
+                  if (retryCount < maxRetries) {
+                    bat 'timeout /t 5 /nobreak'
+                  } else {
+                    throw new Exception("Production health check failed for ${shop} after ${maxRetries} attempts")
+                  }
+                }
+              }
+            }
+            
+            echo 'Production deployment test completed successfully'
+          } catch (Exception e) {
+            echo "Error in production deployment test: ${e.getMessage()}"
+            currentBuild.result = 'FAILURE'
+            throw e
+          }
+        }
+      }
+    }
+
     stage('Deploy Containers') {
       agent { label 'build-node' }
       when {
@@ -330,5 +454,34 @@ pipeline {
 
   tools {
     nodejs 'NodeJS'
+  }
+
+  post {
+    always {
+      script {
+        // Cleanup any remaining containers
+        try {
+          def envVars = readFile('jenkins_env.groovy')
+          evaluate(envVars)
+          def shopsList = SHOPS.split(',')
+          shopsList.each { shop ->
+            bat """
+              REM Cleanup container for ${shop}
+              docker rm -f ${shop}_backend_container || exit /b 0
+            """
+          }
+        } catch (Exception e) {
+          echo "Error during cleanup: ${e.getMessage()}"
+        }
+      }
+    }
+    failure {
+      echo 'Pipeline failed!'
+      // Add notification here if needed
+    }
+    success {
+      echo 'Pipeline succeeded!'
+      // Add notification here if needed
+    }
   }
 }
