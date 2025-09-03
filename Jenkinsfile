@@ -1,32 +1,3 @@
-// Helper function to wait for container readiness
-def waitForContainer(containerName, maxWaitSeconds = 30) {
-  def startTime = System.currentTimeMillis()
-  def maxWaitMs = maxWaitSeconds * 1000
-
-  while (System.currentTimeMillis() - startTime < maxWaitMs) {
-    try {
-      // Check if container is running
-      def containerStatus = bat(
-        script: "docker ps -f name=${containerName} --format \"{{.Status}}\"",
-        returnStdout: true
-      ).trim()
-
-      if (containerStatus && !containerStatus.contains('Exit')) {
-        echo "Container ${containerName} is ready: ${containerStatus}"
-        return true
-      }
-
-      // Wait 2 seconds before next check
-      bat 'timeout /t 2 /nobreak > nul'
-    } catch (Exception e) {
-      echo "Waiting for container ${containerName} to be ready..."
-      bat 'timeout /t 2 /nobreak > nul'
-    }
-  }
-
-  error "Container ${containerName} failed to become ready within ${maxWaitSeconds} seconds"
-}
-
 pipeline {
   agent none
 
@@ -35,6 +6,35 @@ pipeline {
     DOCKER_REGISTRY = credentials('DOCKER_REGISTRY')
     DOCKER_PASSWORD = credentials('DOCKER_PASSWORD')
     DOCKER_IMAGE_TAG = 'latest'
+  }
+
+  // Helper function to wait for container readiness
+  def waitForContainer(containerName, maxWaitSeconds = 30) {
+    def startTime = System.currentTimeMillis()
+    def maxWaitMs = maxWaitSeconds * 1000
+
+    while (System.currentTimeMillis() - startTime < maxWaitMs) {
+      try {
+        // Check if container is running
+        def containerStatus = bat(
+          script: "docker ps -f name=${containerName} --format \"{{.Status}}\"",
+          returnStdout: true
+        ).trim()
+
+        if (containerStatus && !containerStatus.contains("Exit")) {
+          echo "Container ${containerName} is ready: ${containerStatus}"
+          return true
+        }
+
+        // Wait 2 seconds before next check
+        bat 'timeout /t 2 /nobreak > nul'
+      } catch (Exception e) {
+        echo "Waiting for container ${containerName} to be ready..."
+        bat 'timeout /t 2 /nobreak > nul'
+      }
+    }
+
+    error "Container ${containerName} failed to become ready within ${maxWaitSeconds} seconds"
   }
 
   stages {
