@@ -1,3 +1,4 @@
+
 // Helper function to wait for container readiness
 def waitForContainer(containerName, maxWaitSeconds = 30) {
     def startTime = System.currentTimeMillis()
@@ -82,8 +83,10 @@ pipeline {
                         currentBuild.result = 'FAILURE'
                         throw e
                     }
+
                 }
             }
+
         }
 
         stage('Build and Test') {
@@ -183,6 +186,7 @@ pipeline {
                     }
                 }
             }
+
         }
 
         stage('Push to Registry') {
@@ -206,6 +210,7 @@ pipeline {
                 }
             }
         }
+
 
         stage('Deploy and Verify') {
             agent { label 'build-node' }
@@ -288,8 +293,10 @@ pipeline {
                     }
                 }
             }
+
         }
     }
+
 
     post {
         always {
@@ -301,10 +308,13 @@ pipeline {
                     } catch (Exception e) {
                         echo "Error during cleanup: ${e.getMessage()}"
                     }
+
                 }
             }
+
         }
         failure { echo 'Pipeline failed!' }
         success { echo 'Pipeline succeeded!' }
+
     }
 }
