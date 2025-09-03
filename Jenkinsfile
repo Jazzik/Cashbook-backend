@@ -254,7 +254,8 @@ pipeline {
               echo "Deploying ${shop} to production on port ${shopPort}"
 
               withCredentials([
-                string(credentialsId: "${shop}-spreadsheet-id", variable: 'SHOP_SPREADSHEET_ID')
+                string(credentialsId: "${shop}-spreadsheet-id", variable: 'SHOP_SPREADSHEET_ID'),
+                file(credentialsId: 'service-account', variable: 'GOOGLE_SERVICE_ACCOUNT_FILE')
               ]) {
                 bat '''
                 REM Ensure Docker network exists
@@ -269,7 +270,7 @@ pipeline {
                   docker run --name ${shop}_backend_container ^
                     --network cashbook-network ^
                     -d -p 127.0.0.1:${shopPort}:${shopPort} ^
-                    -v C:\\cashbook_vesna:/app/credentials ^
+                    -v "%GOOGLE_SERVICE_ACCOUNT_FILE%:/app/credentials/service-account.json" ^
                     -e PORT=${shopPort} ^
                     -e GOOGLE_SERVICE_ACCOUNT_KEY=/app/credentials/service-account.json ^
                     -e SPREADSHEET_ID=%SHOP_SPREADSHEET_ID% ^
@@ -311,7 +312,8 @@ pipeline {
               echo "Deploying ${shop} on port ${shopPort}"
 
               withCredentials([
-                string(credentialsId: "${shop}-spreadsheet-id", variable: 'SHOP_SPREADSHEET_ID')
+                string(credentialsId: "${shop}-spreadsheet-id", variable: 'SHOP_SPREADSHEET_ID'),
+                file(credentialsId: 'service-account', variable: 'GOOGLE_SERVICE_ACCOUNT_FILE')
               ]) {
                 bat '''
                 REM Ensure Docker network exists
@@ -326,7 +328,7 @@ pipeline {
                   docker run --name ${shop}_backend_container ^
                     --network cashbook-network ^
                     -d -p 127.0.0.1:${shopPort}:${shopPort} ^
-                    -v C:\\cashbook_vesna:/app/credentials ^
+                    -v "%GOOGLE_SERVICE_ACCOUNT_FILE%:/app/credentials/service-account.json" ^
                     -e PORT=${shopPort} ^
                     -e GOOGLE_SERVICE_ACCOUNT_KEY=/app/credentials/service-account.json ^
                     -e SPREADSHEET_ID=%SHOP_SPREADSHEET_ID% ^
