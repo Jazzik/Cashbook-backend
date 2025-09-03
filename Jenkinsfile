@@ -52,15 +52,21 @@ pipeline {
         script {
           try {
             // Set COMMIT_HASH after checkout
+            // Set COMMIT_HASH after checkout
             env.COMMIT_HASH = env.GIT_COMMIT
             echo "Building for commit: ${env.COMMIT_HASH}"
 
             // Set shop list and ports based on branch
             def envVars = ''
+            def envVars = ''
             if (env.BRANCH_NAME == 'test') {
               env.SHOPS = 'testing'
               env.TESTING_PORT = '3999'
               echo "Configured for test environment: ${env.SHOPS}"
+              envVars = """
+              SHOPS='${env.SHOPS}'
+              TESTING_PORT='${env.TESTING_PORT}'
+              """
               envVars = """
               SHOPS='${env.SHOPS}'
               TESTING_PORT='${env.TESTING_PORT}'
@@ -75,9 +81,20 @@ pipeline {
               MAKAROV_PORT='${env.MAKAROV_PORT}'
               YUZ1_PORT='${env.YUZ1_PORT}'
               """
+              envVars = """
+              SHOPS='${env.SHOPS}'
+              MAKAROV_PORT='${env.MAKAROV_PORT}'
+              YUZ1_PORT='${env.YUZ1_PORT}'
+              """
             } else {
               echo "Branch ${env.BRANCH_NAME} not configured for deployment"
               env.SHOPS = ''
+              envVars = "SHOPS=''\n"
+            }
+
+            // Validate required environment variables
+            if (!env.SHOPS) {
+              error "No shops configured for branch: ${env.BRANCH_NAME}"
               envVars = "SHOPS=''\n"
             }
 
@@ -98,6 +115,7 @@ pipeline {
       }
     }
 
+    stage('Build Docker Image') {
     stage('Build Docker Image') {
       agent { label 'build-node' }
       when {
@@ -165,8 +183,10 @@ pipeline {
             def shopsList = SHOPS.split(',')
 
             // Deploy containers
+            // Deploy containers
             shopsList.each { shop ->
               def shopPort = env."${shop.toUpperCase()}_PORT"
+              echo "Deploying ${shop} on port ${shopPort}"
               echo "Deploying ${shop} on port ${shopPort}"
 
               withCredentials([
@@ -196,6 +216,7 @@ pipeline {
 
             echo 'Waiting for containers to initialize...'
             sleep 10
+            sleep 10
 
             // Health check with retry logic
             shopsList.each { shop ->
@@ -218,6 +239,7 @@ pipeline {
                   echo "Health check failed for ${shop}, attempt ${retryCount}/${maxRetries}: ${e.getMessage()}"
                   if (retryCount < maxRetries) {
                     sleep 5
+                    sleep 5
                   } else {
                     throw new Exception("Health check failed for ${shop} after ${maxRetries} attempts")
                   }
@@ -226,8 +248,25 @@ pipeline {
             }
           } catch (Exception e) {
             echo "Error in test environment: ${e.getMessage()}"
+            echo "Error in test environment: ${e.getMessage()}"
             currentBuild.result = 'FAILURE'
             throw e
+          } finally {
+            // Cleanup containers
+            try {
+              def envVars = readFile('jenkins_env.groovy')
+              evaluate(envVars)
+              def shopsList = SHOPS.split(',')
+              shopsList.each { shop ->
+                bat """
+                  REM Stop and remove container
+                  docker rm -f ${shop}_backend_container || exit /b 0
+                """
+                echo "Cleaned up container for ${shop}"
+              }
+            } catch (Exception cleanupError) {
+              echo "Error during cleanup: ${cleanupError.getMessage()}"
+            }
           } finally {
             // Cleanup containers
             try {
@@ -300,8 +339,10 @@ pipeline {
             shopsList.each { shop ->
               def shopPort = env."${shop.toUpperCase()}_PORT"
               echo "Deploying ${shop} on port ${shopPort}"
+              echo "Deploying ${shop} on port ${shopPort}"
 
               withCredentials([
+                string(credentialsId: "${shop}-spreadsheet-id", variable: 'SHOP_SPREADSHEET_ID')
                 string(credentialsId: "${shop}-spreadsheet-id", variable: 'SHOP_SPREADSHEET_ID')
               ]) {
                 bat '''
@@ -318,6 +359,7 @@ pipeline {
                     --network cashbook-network ^
                     -d -p 127.0.0.1:${shopPort}:${shopPort} ^
                     -v C:\\cashbook_vesna:/app/credentials ^
+                    -v C:\\cashbook_vesna:/app/credentials ^
                     -e PORT=${shopPort} ^
                     -e GOOGLE_SERVICE_ACCOUNT_KEY=/app/credentials/service-account.json ^
                     -e SPREADSHEET_ID=%SHOP_SPREADSHEET_ID% ^
@@ -326,6 +368,7 @@ pipeline {
               }
             }
           } catch (Exception e) {
+            echo "Error in Deploy Containers stage: ${e.getMessage()}"
             echo "Error in Deploy Containers stage: ${e.getMessage()}"
             currentBuild.result = 'FAILURE'
             throw e
@@ -343,8 +386,43 @@ pipeline {
         unstash 'source-code'
         unstash 'jenkins-env'
         script {
+          // Helper function to wait for container readiness
+          def waitForContainer(containerName, maxWaitSeconds = 30) {
+            def startTime = System.currentTimeMillis()
+            def maxWaitMs = maxWaitSeconds * 1000
+
+            while (System.currentTimeMillis() - startTime < maxWaitMs) {
+              try {
+                // Check if container is running
+                def containerStatus = bat(
+                  script: "docker ps -f name=${containerName} --format \"{{.Status}}\"",
+                  returnStdout: true
+                ).trim()
+
+                if (containerStatus && !containerStatus.contains("Exit")) {
+                  echo "Container ${containerName} is ready: ${containerStatus}"
+                  return true
+                }
+
+                // Wait 2 seconds before next check
+                bat 'timeout /t 2 /nobreak > nul'
+              } catch (Exception e) {
+                echo "Waiting for container ${containerName} to be ready..."
+                bat 'timeout /t 2 /nobreak > nul'
+              }
+            }
+
+            error "Container ${containerName} failed to become ready within ${maxWaitSeconds} seconds"
+          }
+
           try {
             echo 'Waiting for containers to initialize...'
+            sleep 10
+
+            def envVars = readFile('jenkins_env.groovy')
+            evaluate(envVars)
+            def shopsList = SHOPS.split(',')
+
             sleep 10
 
             def envVars = readFile('jenkins_env.groovy')
@@ -372,6 +450,7 @@ pipeline {
                   echo "Health check failed for ${shop}, attempt ${retryCount}/${maxRetries}: ${e.getMessage()}"
                   if (retryCount < maxRetries) {
                     sleep 5
+                    sleep 5
                   } else {
                     throw new Exception("Health check failed for ${shop} after ${maxRetries} attempts")
                   }
@@ -379,6 +458,7 @@ pipeline {
               }
             }
           } catch (Exception e) {
+            echo "Error in production health check: ${e.getMessage()}"
             echo "Error in production health check: ${e.getMessage()}"
             currentBuild.result = 'FAILURE'
             throw e
