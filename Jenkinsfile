@@ -46,7 +46,6 @@ pipeline {
       }
     }
 
-
     stage('Configure') {
       agent { label 'build-node' }
       steps {
