@@ -99,35 +99,6 @@ pipeline {
       }
       steps {
         script {
-          // Helper function to wait for container readiness
-          def waitForContainer(containerName, maxWaitSeconds = 30) {
-            def startTime = System.currentTimeMillis()
-            def maxWaitMs = maxWaitSeconds * 1000
-
-            while (System.currentTimeMillis() - startTime < maxWaitMs) {
-              try {
-                // Check if container is running
-                def containerStatus = bat(
-                  script: "docker ps -f name=${containerName} --format \"{{.Status}}\"",
-                  returnStdout: true
-                ).trim()
-
-                if (containerStatus && !containerStatus.contains("Exit")) {
-                  echo "Container ${containerName} is ready: ${containerStatus}"
-                  return true
-                }
-
-                // Wait 2 seconds before next check
-                bat 'timeout /t 2 /nobreak > nul'
-              } catch (Exception e) {
-                echo "Waiting for container ${containerName} to be ready..."
-                bat 'timeout /t 2 /nobreak > nul'
-              }
-            }
-
-            error "Container ${containerName} failed to become ready within ${maxWaitSeconds} seconds"
-          }
-
           try {
             // Build Docker image
             echo 'Building Docker image'
@@ -326,35 +297,6 @@ pipeline {
         unstash 'source-code'
         unstash 'jenkins-env'
         script {
-          // Helper function to wait for container readiness
-          def waitForContainer(containerName, maxWaitSeconds = 30) {
-            def startTime = System.currentTimeMillis()
-            def maxWaitMs = maxWaitSeconds * 1000
-
-            while (System.currentTimeMillis() - startTime < maxWaitMs) {
-              try {
-                // Check if container is running
-                def containerStatus = bat(
-                  script: "docker ps -f name=${containerName} --format \"{{.Status}}\"",
-                  returnStdout: true
-                ).trim()
-
-                if (containerStatus && !containerStatus.contains("Exit")) {
-                  echo "Container ${containerName} is ready: ${containerStatus}"
-                  return true
-                }
-
-                // Wait 2 seconds before next check
-                bat 'timeout /t 2 /nobreak > nul'
-              } catch (Exception e) {
-                echo "Waiting for container ${containerName} to be ready..."
-                bat 'timeout /t 2 /nobreak > nul'
-              }
-            }
-
-            error "Container ${containerName} failed to become ready within ${maxWaitSeconds} seconds"
-          }
-
           try {
             // Pull the image using the latest tag
             bat '''
