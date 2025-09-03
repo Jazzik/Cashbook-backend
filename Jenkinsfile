@@ -103,9 +103,7 @@ pipeline {
         unstash 'jenkins-env'
         script {
           try {
-            def envVars = readFile('jenkins_env.groovy')
-            evaluate(envVars)
-            def shopsList = SHOPS.split(',')
+            def shopsList = env.SHOPS.split(',')
 
             // Deploy containers
             shopsList.each { shop ->
@@ -138,7 +136,7 @@ pipeline {
             }
 
             echo 'Waiting for containers to initialize...'
-            sleep 10
+            bat 'ping 127.0.0.1 -n 11 > nul'
 
             // Health check with retry logic
             shopsList.each { shop ->
@@ -160,7 +158,7 @@ pipeline {
                   retryCount++
                   echo "Health check failed for ${shop}, attempt ${retryCount}/${maxRetries}: ${e.getMessage()}"
                   if (retryCount < maxRetries) {
-                    sleep 5
+                    bat 'ping 127.0.0.1 -n 6 > nul'
                   } else {
                     throw new Exception("Health check failed for ${shop} after ${maxRetries} attempts")
                   }
@@ -174,8 +172,6 @@ pipeline {
           } finally {
             // Cleanup containers
             try {
-              def envVars = readFile('jenkins_env.groovy')
-              evaluate(envVars)
               def shopsList = env.SHOPS.split(',')
               shopsList.each { shop ->
                 bat """
@@ -241,9 +237,6 @@ pipeline {
             
             // Load environment variables for production
             unstash 'jenkins-env'
-            def envVars = readFile('jenkins_env.groovy')
-            evaluate(envVars)
-            
             // Set production environment variables
             env.SHOPS = 'makarov,yuz1'
             env.MAKAROV_PORT = '5000'
@@ -299,7 +292,7 @@ pipeline {
         script {
           try {
             echo 'Testing production deployment'
-            bat 'timeout /t 10 /nobreak' // Give containers time to start
+            bat 'ping 127.0.0.1 -n 11 > nul' // Give containers time to start
             
             // Test production deployment
             def shopsList = env.SHOPS.split(',')
@@ -322,7 +315,7 @@ pipeline {
                   retryCount++
                   echo "Production health check failed for ${shop}, attempt ${retryCount}/${maxRetries}: ${e.getMessage()}"
                   if (retryCount < maxRetries) {
-                    bat 'timeout /t 5 /nobreak'
+                    bat 'ping 127.0.0.1 -n 6 > nul'
                   } else {
                     throw new Exception("Production health check failed for ${shop} after ${maxRetries} attempts")
                   }
@@ -350,10 +343,6 @@ pipeline {
         unstash 'jenkins-env'
         script {
           try {
-            // Load dynamic env vars
-            def envVars = readFile('jenkins_env.groovy')
-            evaluate(envVars)
-
             // Pull the image using the latest tag
             bat '''
               REM Pull the image using the latest tag
@@ -409,11 +398,9 @@ pipeline {
         script {
           try {
             echo 'Waiting for containers to initialize...'
-            sleep 10
+            bat 'ping 127.0.0.1 -n 11 > nul'
 
-            def envVars = readFile('jenkins_env.groovy')
-            evaluate(envVars)
-            def shopsList = SHOPS.split(',')
+            def shopsList = env.SHOPS.split(',')
 
             shopsList.each { shop ->
               def shopPort = env."${shop.toUpperCase()}_PORT"
@@ -435,7 +422,7 @@ pipeline {
                   retryCount++
                   echo "Health check failed for ${shop}, attempt ${retryCount}/${maxRetries}: ${e.getMessage()}"
                   if (retryCount < maxRetries) {
-                    sleep 5
+                    bat 'ping 127.0.0.1 -n 6 > nul'
                   } else {
                     throw new Exception("Health check failed for ${shop} after ${maxRetries} attempts")
                   }
@@ -458,20 +445,19 @@ pipeline {
 
   post {
     always {
-      script {
-        // Cleanup any remaining containers
-        try {
-          def envVars = readFile('jenkins_env.groovy')
-          evaluate(envVars)
-          def shopsList = SHOPS.split(',')
-          shopsList.each { shop ->
-            bat """
-              REM Cleanup container for ${shop}
-              docker rm -f ${shop}_backend_container || exit /b 0
-            """
+      node('build-node') {
+        script {
+          // Cleanup any remaining containers
+          try {
+            // Cleanup test containers
+            bat '''
+              REM Cleanup test containers
+              docker rm -f testing_backend_container || exit /b 0
+            '''
+            echo "Cleanup completed"
+          } catch (Exception e) {
+            echo "Error during cleanup: ${e.getMessage()}"
           }
-        } catch (Exception e) {
-          echo "Error during cleanup: ${e.getMessage()}"
         }
       }
     }
