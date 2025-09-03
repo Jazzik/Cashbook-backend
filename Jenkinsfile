@@ -226,22 +226,22 @@ pipeline {
             echo 'Production deployment skipped by user'
             return
           }
-          
+
           try {
             echo 'Deploying tested version to production'
-            
+
             // Pull the tested image
             bat '''
               docker pull %DOCKER_REGISTRY%/%IMAGE_NAME%:%DOCKER_IMAGE_TAG%
             '''
-            
+
             // Load environment variables for production
             unstash 'jenkins-env'
             // Set production environment variables
             env.SHOPS = 'makarov,yuz1'
             env.MAKAROV_PORT = '5000'
             env.YUZ1_PORT = '5001'
-            
+
             // Deploy to production
             def shopsList = env.SHOPS.split(',')
             shopsList.each { shop ->
@@ -272,7 +272,7 @@ pipeline {
                 """
               }
             }
-            
+
             echo 'Production deployment completed successfully'
           } catch (Exception e) {
             echo "Error in production deployment: ${e.getMessage()}"
@@ -293,13 +293,13 @@ pipeline {
           try {
             echo 'Testing production deployment'
             bat 'ping 127.0.0.1 -n 11 > nul' // Give containers time to start
-            
+
             // Test production deployment
             def shopsList = env.SHOPS.split(',')
             shopsList.each { shop ->
               def shopPort = env."${shop.toUpperCase()}_PORT"
               echo "Testing production deployment for ${shop} on port ${shopPort}"
-              
+
               def healthCheckPassed = false
               def maxRetries = 3
               def retryCount = 0
@@ -322,7 +322,7 @@ pipeline {
                 }
               }
             }
-            
+
             echo 'Production deployment test completed successfully'
           } catch (Exception e) {
             echo "Error in production deployment test: ${e.getMessage()}"
@@ -454,7 +454,7 @@ pipeline {
               REM Cleanup test containers
               docker rm -f testing_backend_container || exit /b 0
             '''
-            echo "Cleanup completed"
+            echo 'Cleanup completed'
           } catch (Exception e) {
             echo "Error during cleanup: ${e.getMessage()}"
           }
@@ -463,11 +463,11 @@ pipeline {
     }
     failure {
       echo 'Pipeline failed!'
-      // Add notification here if needed
+    // Add notification here if needed
     }
     success {
       echo 'Pipeline succeeded!'
-      // Add notification here if needed
+    // Add notification here if needed
     }
   }
 }
