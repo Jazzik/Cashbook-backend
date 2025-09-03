@@ -176,7 +176,7 @@ pipeline {
             try {
               def envVars = readFile('jenkins_env.groovy')
               evaluate(envVars)
-              def shopsList = SHOPS.split(',')
+              def shopsList = env.SHOPS.split(',')
               shopsList.each { shop ->
                 bat """
                   REM Stop and remove container
@@ -361,7 +361,7 @@ pipeline {
             '''
 
             // Deploy containers
-            def shopsList = SHOPS.split(',')
+            def shopsList = env.SHOPS.split(',')
             shopsList.each { shop ->
               def shopPort = env."${shop.toUpperCase()}_PORT"
               echo "Deploying ${shop} on port ${shopPort}"
