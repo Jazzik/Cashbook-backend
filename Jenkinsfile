@@ -1,32 +1,3 @@
-// Helper function to wait for container readiness
-def waitForContainer(containerName, maxWaitSeconds = 30) {
-  def startTime = System.currentTimeMillis()
-  def maxWaitMs = maxWaitSeconds * 1000
-
-  while (System.currentTimeMillis() - startTime < maxWaitMs) {
-    try {
-      // Check if container is running
-      def containerStatus = bat(
-        script: "docker ps -f name=${containerName} --format \"{{.Status}}\"",
-        returnStdout: true
-      ).trim()
-
-      if (containerStatus && !containerStatus.contains('Exit')) {
-        echo "Container ${containerName} is ready: ${containerStatus}"
-        return true
-      }
-
-      // Wait 2 seconds before next check
-      bat 'timeout /t 2 /nobreak > nul'
-    } catch (Exception e) {
-      echo "Waiting for container ${containerName} to be ready..."
-      bat 'timeout /t 2 /nobreak > nul'
-    }
-  }
-
-  error "Container ${containerName} failed to become ready within ${maxWaitSeconds} seconds"
-}
-
 pipeline {
   agent none
 
@@ -211,6 +182,17 @@ pipeline {
                     -e SPREADSHEET_ID=%SHOP_SPREADSHEET_ID% ^
                     %DOCKER_REGISTRY%/%IMAGE_NAME%:%DOCKER_IMAGE_TAG%
                 """
+                // Verify credentials mount
+                bat """
+                  docker exec ${shop}_backend_container sh -c "set -e; \n\
+                    echo 'Verifying credentials mount...'; \n\
+                    if [ -f /app/credentials/service-account.json ] && [ -s /app/credentials/service-account.json ]; then \n\
+                      echo 'Credentials file is present and non-empty.'; \n\
+                    else \n\
+                      echo 'ERROR: Credentials file missing or empty at /app/credentials/service-account.json'; \n\
+                      exit 1; \n\
+                    fi"
+                """
               }
             }
 
@@ -251,38 +233,6 @@ pipeline {
             echo "Error in test environment: ${e.getMessage()}"
             currentBuild.result = 'FAILURE'
             throw e
-          } finally {
-            // Cleanup containers
-            try {
-              def envVars = readFile('jenkins_env.groovy')
-              evaluate(envVars)
-              def shopsList = SHOPS.split(',')
-              shopsList.each { shop ->
-                bat """
-                  REM Stop and remove container
-                  docker rm -f ${shop}_backend_container || exit /b 0
-                """
-                echo "Cleaned up container for ${shop}"
-              }
-            } catch (Exception cleanupError) {
-              echo "Error during cleanup: ${cleanupError.getMessage()}"
-            }
-          } finally {
-            // Cleanup containers
-            try {
-              def envVars = readFile('jenkins_env.groovy')
-              evaluate(envVars)
-              def shopsList = SHOPS.split(',')
-              shopsList.each { shop ->
-                bat """
-                  REM Stop and remove container
-                  docker rm -f ${shop}_backend_container || exit /b 0
-                """
-                echo "Cleaned up container for ${shop}"
-              }
-            } catch (Exception cleanupError) {
-              echo "Error during cleanup: ${cleanupError.getMessage()}"
-            }
           }
         }
       }
@@ -313,7 +263,6 @@ pipeline {
     }
 
     stage('Deploy Containers') {
-      agent { label 'build-node' }
       when {
         branch 'test'
       }
@@ -364,6 +313,18 @@ pipeline {
                     -e GOOGLE_SERVICE_ACCOUNT_KEY=/app/credentials/service-account.json ^
                     -e SPREADSHEET_ID=%SHOP_SPREADSHEET_ID% ^
                     %DOCKER_REGISTRY%/%IMAGE_NAME%:%DOCKER_IMAGE_TAG%
+                """
+                // Verify credentials mount
+                bat """
+                  docker exec ${shop}_backend_container sh -c "set -e; \n\
+                    echo 'Verifying credentials mount...'; \n\
+                    ls -l /app/credentials || true; \n\
+                    if [ -f /app/credentials/service-account.json ] && [ -s /app/credentials/service-account.json ]; then \n\
+                      echo 'Credentials file is present and non-empty.'; \n\
+                    else \n\
+                      echo 'ERROR: Credentials file missing or empty at /app/credentials/service-account.json'; \n\
+                      exit 1; \n\
+                    fi"
                 """
               }
             }
@@ -474,8 +435,26 @@ pipeline {
         script {
           // Cleanup any remaining test containers
           try {
+            // Attempt to read dynamic env vars to know what to cleanup
+            try {
+              def envVars = readFile('jenkins_env.groovy')
+              evaluate(envVars)
+            } catch (Exception ignore) {
+              // If file not found, it's ok; we'll fallback to best-effort cleanup
+            }
+
+            // Cleanup containers for known shops if SHOPS is available
+            if (env.SHOPS) {
+              def shopsList = env.SHOPS.split(',')
+              shopsList.each { shop ->
+                bat """
+                  docker rm -f ${shop}_backend_container || exit /b 0
+                """
+              }
+            }
+
+            // Also cleanup the generic testing container if present
             bat '''
-              REM Cleanup test containers
               docker rm -f testing_backend_container || exit /b 0
             '''
             echo 'Cleanup completed'
