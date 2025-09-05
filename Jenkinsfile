@@ -113,7 +113,9 @@ pipeline {
 
                             withCredentials([
                                 string(credentialsId: "${shop}-spreadsheet-id", variable: 'SHOP_SPREADSHEET_ID'),
-                                file(credentialsId: 'service-account', variable: 'GOOGLE_SERVICE_ACCOUNT_FILE')
+                                file(credentialsId: 'service-account', variable: 'GOOGLE_SERVICE_ACCOUNT_FILE'),
+                                string(credentialsId: 'telegram-bot-token', variable: 'TELEGRAM_BOT_TOKEN'),
+                                string(credentialsId: "${shop}-telegram-chat-id", variable: 'TELEGRAM_CHAT_ID')
                             ]) {
                                 // Копируем service-account в workspace
                                 bat 'copy "%GOOGLE_SERVICE_ACCOUNT_FILE%" service-account.json'
@@ -142,6 +144,8 @@ pipeline {
                                         -e PORT=${shopPort} ^
                                         -e GOOGLE_SERVICE_ACCOUNT_KEY=/app/credentials/service-account.json ^
                                         -e SPREADSHEET_ID=%SHOP_SPREADSHEET_ID% ^
+                                        -e TELEGRAM_BOT_TOKEN=%TELEGRAM_BOT_TOKEN% ^
+                                        -e TELEGRAM_CHAT_ID=%TELEGRAM_CHAT_ID% ^
                                         %DOCKER_REGISTRY%/%IMAGE_NAME%:%DOCKER_IMAGE_TAG%
                                 """
                             }
@@ -161,13 +165,13 @@ pipeline {
 
                             while (!healthCheckPassed && retryCount < maxRetries) {
                                 try {
-                                    bat "curl -f -m 10 http://127.0.0.1:${shopPort}/api/health"
+                                    bat "curl -f -m 15 http://127.0.0.1:${shopPort}/api/health"
                                     healthCheckPassed = true
                                     echo "Health check passed for ${shop}"
                                 } catch (Exception e) {
                                     retryCount++
                                     echo "Health check failed for ${shop}, attempt ${retryCount}/${maxRetries}: ${e.getMessage()}"
-                                    if (retryCount < maxRetries) bat 'timeout /t 5 /nobreak > nul'
+                                    if (retryCount < maxRetries) bat 'timeout /t 10 /nobreak > nul'
                                     else throw new Exception("Health check failed for ${shop} after ${maxRetries} attempts")
                                 }
                             }
@@ -229,7 +233,9 @@ pipeline {
 
                             withCredentials([
                                 string(credentialsId: "${shop}-spreadsheet-id", variable: 'SHOP_SPREADSHEET_ID'),
-                                file(credentialsId: 'service-account', variable: 'GOOGLE_SERVICE_ACCOUNT_FILE')
+                                file(credentialsId: 'service-account', variable: 'GOOGLE_SERVICE_ACCOUNT_FILE'),
+                                string(credentialsId: 'telegram-bot-token', variable: 'TELEGRAM_BOT_TOKEN'),
+                                string(credentialsId: "${shop}-telegram-chat-id", variable: 'TELEGRAM_CHAT_ID')
                             ]) {
                                 bat 'copy "%GOOGLE_SERVICE_ACCOUNT_FILE%" service-account.json'
 
@@ -255,6 +261,8 @@ pipeline {
                                         -e PORT=${shopPort} ^
                                         -e GOOGLE_SERVICE_ACCOUNT_KEY=/app/credentials/service-account.json ^
                                         -e SPREADSHEET_ID=%SHOP_SPREADSHEET_ID% ^
+                                        -e TELEGRAM_BOT_TOKEN=%TELEGRAM_BOT_TOKEN% ^
+                                        -e TELEGRAM_CHAT_ID=%TELEGRAM_CHAT_ID% ^
                                         %DOCKER_REGISTRY%/%IMAGE_NAME%:%DOCKER_IMAGE_TAG%
                                 """
                             }
@@ -272,13 +280,13 @@ pipeline {
 
                             while (!healthCheckPassed && retryCount < maxRetries) {
                                 try {
-                                    bat "curl -f -m 10 http://127.0.0.1:${shopPort}/api/health"
+                                    bat "curl -f -m 15 http://127.0.0.1:${shopPort}/api/health"
                                     healthCheckPassed = true
                                     echo "Health check passed for ${shop}"
                                 } catch (Exception e) {
                                     retryCount++
                                     echo "Health check failed for ${shop}, attempt ${retryCount}/${maxRetries}: ${e.getMessage()}"
-                                    if (retryCount < maxRetries) bat 'timeout /t 5 /nobreak > nul'
+                                    if (retryCount < maxRetries) bat 'timeout /t 10 /nobreak > nul'
                                     else throw new Exception("Health check failed for ${shop} after ${maxRetries} attempts")
                                 }
                             }

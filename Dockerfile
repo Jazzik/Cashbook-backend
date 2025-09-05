@@ -41,6 +41,9 @@ RUN mkdir -p /app/credentials
 # Copy compiled code from build stage
 COPY --from=build /app/dist ./dist
 
+# Copy telegram-bot directory for integration
+COPY --from=build /app/telegram-bot ./telegram-bot
+
 # Environment variables
 ENV NODE_ENV=production
 

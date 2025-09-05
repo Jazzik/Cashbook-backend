@@ -1,0 +1,29 @@
+{
+  "name": "vesna-cashbook-telegram-bot",
+  "version": "1.0.0",
+  "description": "Telegram bot for sending latest images from uploads folder",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js",
+    "dev": "nodemon bot.js"
+  },
+  "keywords": [
+    "telegram",
+    "bot",
+    "cashbook",
+    "image",
+    "upload"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "node-telegram-bot-api": "^0.66.0",
+    "dotenv": "^16.4.7"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

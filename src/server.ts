@@ -3,6 +3,17 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { google } from 'googleapis';
 import fs from 'fs';
+import multer from 'multer';
+import path from 'path';
+// @ts-ignore - JavaScript module without types
+let sendReportToTelegram: any = null;
+try {
+    const telegramIntegration = require('../telegram-bot/integration');
+    sendReportToTelegram = telegramIntegration.sendReportToTelegram;
+} catch (error: any) {
+    console.warn('Telegram integration not available:', error.message);
+    sendReportToTelegram = async () => ({ success: false, message: 'Telegram integration not available' });
+}
 
 // Process error handling
 process.on('uncaughtException', (error) => {
@@ -22,7 +33,7 @@ dotenv.config();
 
 // Initialize Express app
 const app = express();
-const PORT = parseInt(process.env.PORT || '5000', 10);
+const PORT = parseInt(process.env.PORT || '5001', 10);
 
 // Middleware
 app.use(cors({
@@ -40,6 +51,38 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// Configure multer for file uploads
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        const uploadDir = path.join(__dirname, '../uploads');
+        if (!fs.existsSync(uploadDir)) {
+            fs.mkdirSync(uploadDir, { recursive: true });
+        }
+        cb(null, uploadDir);
+    },
+    filename: (req, file, cb) => {
+        // Generate unique filename with timestamp
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const filename = `shift-report-${timestamp}-${file.originalname}`;
+        cb(null, filename);
+    }
+});
+
+const upload = multer({
+    storage: storage,
+    limits: {
+        fileSize: 10 * 1024 * 1024 // 10MB limit
+    },
+    fileFilter: (req, file, cb) => {
+        // Accept only image files
+        if (file.mimetype.startsWith('image/')) {
+            cb(null, true);
+        } else {
+            cb(new Error('Only image files are allowed!'));
+        }
+    }
+});
+
 // Google Sheets API setup
 const auth = new google.auth.GoogleAuth({
     keyFile: process.env.GOOGLE_SERVICE_ACCOUNT_KEY || '',
@@ -50,9 +93,29 @@ const sheets = google.sheets({ version: 'v4', auth });
 const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
 
 // Routes
-app.post('/api/shift-data', async (req, res) => {
+app.post('/api/shift-data', upload.single('screenshot'), async (req, res) => {
     try {
         console.log('Raw request body:', req.body);
+        console.log('Uploaded file:', req.file);
+
+        // Handle uploaded screenshot
+        let screenshotPath = null;
+        if (req.file) {
+            screenshotPath = req.file.path;
+            console.log('Screenshot saved to:', screenshotPath);
+        }
+
+        // Parse shift data - it might be in req.body.shiftData if sent as FormData
+        let shiftData = req.body;
+        if (req.body.shiftData) {
+            try {
+                shiftData = JSON.parse(req.body.shiftData);
+            } catch (error) {
+                console.error('Error parsing shift data:', error);
+                res.status(400).json({ success: false, message: 'Invalid shift data format' });
+                return;
+            }
+        }
 
         const {
             date,
@@ -66,7 +129,7 @@ app.post('/api/shift-data', async (req, res) => {
             cashDeposits,
             cashWithdrawal,
             finalBalance
-        } = req.body;
+        } = shiftData;
 
         console.log('Parsed shift data:', {
             terminal,
@@ -146,7 +209,29 @@ app.post('/api/shift-data', async (req, res) => {
 
         console.log('Google Sheets update response:', updateResponse.data);
 
-        res.status(200).json({ success: true, message: 'Data saved successfully' });
+        // Отправляем отчет в телеграм после успешного сохранения данных
+        let telegramResult = null;
+        try {
+            console.log('📤 Отправка отчета в Telegram...');
+            telegramResult = await sendReportToTelegram();
+            console.log('Telegram result:', telegramResult);
+        } catch (telegramError: any) {
+            console.error('❌ Ошибка отправки в Telegram:', telegramError);
+            telegramResult = {
+                success: false,
+                message: `Ошибка отправки в Telegram: ${telegramError?.message || 'Unknown error'}`
+            };
+        }
+
+        res.status(200).json({
+            success: true,
+            message: 'Data saved successfully',
+            screenshot: screenshotPath ? {
+                filename: req.file?.filename,
+                path: screenshotPath
+            } : null,
+            telegram: telegramResult
+        });
     } catch (error) {
         console.error('Error saving shift data:', error);
         res.status(500).json({ success: false, message: 'Failed to save data', error });
@@ -165,6 +250,8 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`- PORT: ${process.env.PORT}`);
     console.log(`- GOOGLE_SERVICE_ACCOUNT_KEY: ${process.env.GOOGLE_SERVICE_ACCOUNT_KEY}`);
     console.log(`- SPREADSHEET_ID: ${process.env.SPREADSHEET_ID}`);
+    console.log(`- TELEGRAM_BOT_TOKEN: ${process.env.TELEGRAM_BOT_TOKEN ? 'Set' : 'Not set'}`);
+    console.log(`- TELEGRAM_CHAT_ID: ${process.env.TELEGRAM_CHAT_ID ? 'Set' : 'Not set'}`);
 
     // Check if service account file exists
     try {
