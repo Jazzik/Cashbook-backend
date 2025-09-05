@@ -117,6 +117,17 @@ pipeline {
                                 string(credentialsId: 'telegram-bot-token', variable: 'TELEGRAM_BOT_TOKEN'),
                                 string(credentialsId: "${shop}-telegram-chat-id", variable: 'TELEGRAM_CHAT_ID')
                             ]) {
+                                // Опциональный thread ID - если credential не существует, переменная будет пустой
+                                def threadIdCredential = ""
+                                try {
+                                    withCredentials([string(credentialsId: "${shop}-telegram-thread-id", variable: 'TELEGRAM_THREAD_ID')]) {
+                                        threadIdCredential = env.TELEGRAM_THREAD_ID
+                                    }
+                                } catch (Exception e) {
+                                    echo "Thread ID credential not found for ${shop}, using main chat"
+                                    threadIdCredential = ""
+                                }
+                                
                                 // Копируем service-account в workspace
                                 bat 'copy "%GOOGLE_SERVICE_ACCOUNT_FILE%" service-account.json'
 
@@ -146,6 +157,7 @@ pipeline {
                                         -e SPREADSHEET_ID=%SHOP_SPREADSHEET_ID% ^
                                         -e TELEGRAM_BOT_TOKEN=%TELEGRAM_BOT_TOKEN% ^
                                         -e TELEGRAM_CHAT_ID=%TELEGRAM_CHAT_ID% ^
+                                        -e TELEGRAM_THREAD_ID=${threadIdCredential} ^
                                         %DOCKER_REGISTRY%/%IMAGE_NAME%:%DOCKER_IMAGE_TAG%
                                 """
                             }
@@ -237,6 +249,17 @@ pipeline {
                                 string(credentialsId: 'telegram-bot-token', variable: 'TELEGRAM_BOT_TOKEN'),
                                 string(credentialsId: "${shop}-telegram-chat-id", variable: 'TELEGRAM_CHAT_ID')
                             ]) {
+                                // Опциональный thread ID - если credential не существует, переменная будет пустой
+                                def threadIdCredential = ""
+                                try {
+                                    withCredentials([string(credentialsId: "${shop}-telegram-thread-id", variable: 'TELEGRAM_THREAD_ID')]) {
+                                        threadIdCredential = env.TELEGRAM_THREAD_ID
+                                    }
+                                } catch (Exception e) {
+                                    echo "Thread ID credential not found for ${shop}, using main chat"
+                                    threadIdCredential = ""
+                                }
+                                
                                 bat 'copy "%GOOGLE_SERVICE_ACCOUNT_FILE%" service-account.json'
 
                                 bat """
@@ -263,6 +286,7 @@ pipeline {
                                         -e SPREADSHEET_ID=%SHOP_SPREADSHEET_ID% ^
                                         -e TELEGRAM_BOT_TOKEN=%TELEGRAM_BOT_TOKEN% ^
                                         -e TELEGRAM_CHAT_ID=%TELEGRAM_CHAT_ID% ^
+                                        -e TELEGRAM_THREAD_ID=${threadIdCredential} ^
                                         %DOCKER_REGISTRY%/%IMAGE_NAME%:%DOCKER_IMAGE_TAG%
                                 """
                             }

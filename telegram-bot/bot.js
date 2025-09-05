@@ -6,6 +6,7 @@ require("dotenv").config();
 // Конфигурация бота
 const token = process.env.TELEGRAM_BOT_TOKEN;
 const chatId = process.env.TELEGRAM_CHAT_ID;
+const threadId = process.env.TELEGRAM_THREAD_ID; // Опциональный thread ID
 const uploadsPath = path.join(__dirname, "../uploads");
 
 if (!token || !chatId) {
@@ -17,6 +18,61 @@ if (!token || !chatId) {
 
 // Создание экземпляра бота
 const bot = new TelegramBot(token, { polling: false });
+
+/**
+ * Функция для вывода сообщений с их thread ID в консоль
+ * Запускает бота в режиме polling для прослушивания сообщений
+ */
+function startMessageListener() {
+  console.log("🔍 Запуск прослушивания сообщений для получения thread ID...");
+  console.log(
+    "📝 Отправьте любое сообщение в чат, чтобы увидеть его thread ID"
+  );
+  console.log("⏹️  Для остановки нажмите Ctrl+C");
+
+  // Создаем новый экземпляр бота с polling
+  const listenerBot = new TelegramBot(token, { polling: true });
+
+  // Обработчик всех входящих сообщений
+  listenerBot.on("message", (msg) => {
+    const messageInfo = {
+      messageId: msg.message_id,
+      chatId: msg.chat.id,
+      threadId: msg.message_thread_id || "Нет thread ID (обычное сообщение)",
+      from: msg.from
+        ? `${msg.from.first_name} ${msg.from.last_name || ""}`.trim()
+        : "Неизвестно",
+      username: msg.from ? msg.from.username : "Нет username",
+      text: msg.text || "Нет текста",
+      date: new Date(msg.date * 1000).toLocaleString("ru-RU"),
+      chatType: msg.chat.type,
+    };
+
+    console.log("\n📨 === НОВОЕ СООБЩЕНИЕ ===");
+    console.log(`🆔 Message ID: ${messageInfo.messageId}`);
+    console.log(`💬 Chat ID: ${messageInfo.chatId}`);
+    console.log(`🧵 Thread ID: ${messageInfo.threadId}`);
+    console.log(`👤 От: ${messageInfo.from} (@${messageInfo.username})`);
+    console.log(`📝 Текст: ${messageInfo.text}`);
+    console.log(`📅 Дата: ${messageInfo.date}`);
+    console.log(`🏷️  Тип чата: ${messageInfo.chatType}`);
+    console.log("========================\n");
+  });
+
+  // Обработчик ошибок
+  listenerBot.on("error", (error) => {
+    console.error("❌ Ошибка бота:", error);
+  });
+
+  // Обработчик остановки
+  process.on("SIGINT", () => {
+    console.log("\n🛑 Остановка прослушивания сообщений...");
+    listenerBot.stopPolling();
+    process.exit(0);
+  });
+
+  return listenerBot;
+}
 
 /**
  * Получает последнее изображение из папки uploads
@@ -78,10 +134,21 @@ async function sendLatestImage() {
 
     console.log(`Отправка изображения: ${path.basename(imagePath)}`);
 
-    // Отправляем изображение
-    await bot.sendPhoto(chatId, imagePath, {
+    // Подготавливаем опции для отправки
+    const sendOptions = {
       caption: `📊 Отчет за ${new Date().toLocaleDateString("ru-RU")}`,
-    });
+    };
+
+    // Если задан thread ID, добавляем его в опции
+    if (threadId) {
+      sendOptions.message_thread_id = parseInt(threadId);
+      console.log(`Отправка в thread ID: ${threadId}`);
+    } else {
+      console.log("Отправка в основной чат (без thread ID)");
+    }
+
+    // Отправляем изображение
+    await bot.sendPhoto(chatId, imagePath, sendOptions);
 
     console.log("Изображение успешно отправлено");
 
@@ -108,6 +175,11 @@ async function runBot() {
   console.log("🤖 Запуск телеграм бота...");
   console.log(`📁 Папка uploads: ${uploadsPath}`);
   console.log(`💬 Chat ID: ${chatId}`);
+  if (threadId) {
+    console.log(`🧵 Thread ID: ${threadId}`);
+  } else {
+    console.log("🧵 Thread ID: не задан (отправка в основной чат)");
+  }
 
   try {
     await sendLatestImage();
@@ -127,4 +199,5 @@ module.exports = {
   sendLatestImage,
   getLatestImage,
   runBot,
+  startMessageListener,
 };

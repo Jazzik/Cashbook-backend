@@ -1,4 +1,4 @@
-const { sendLatestImage } = require("./bot");
+const { sendLatestImage, startMessageListener } = require("./bot");
 
 /**
  * Интеграция телеграм бота с основным приложением
@@ -12,9 +12,11 @@ const { sendLatestImage } = require("./bot");
 async function sendReportToTelegram() {
   try {
     await sendLatestImage();
+    const threadId = process.env.TELEGRAM_THREAD_ID;
+    const location = threadId ? `thread ID ${threadId}` : "основной чат";
     return {
       success: true,
-      message: "Отчет успешно отправлен в Telegram",
+      message: `Отчет успешно отправлен в Telegram (${location})`,
     };
   } catch (error) {
     console.error("Ошибка отправки в Telegram:", error);
@@ -56,7 +58,20 @@ async function checkForImages() {
   }
 }
 
+/**
+ * Запускает прослушивание сообщений для получения thread ID
+ * @returns {Promise<void>}
+ */
+async function startThreadIdListener() {
+  try {
+    await startMessageListener();
+  } catch (error) {
+    console.error("Ошибка запуска прослушивания сообщений:", error);
+  }
+}
+
 module.exports = {
   sendReportToTelegram,
   checkForImages,
+  startThreadIdListener,
 };
