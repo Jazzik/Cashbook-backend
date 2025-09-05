@@ -2,46 +2,37 @@
 
 ## Обзор
 
-Jenkinsfile обновлен для поддержки переменных окружения телеграм бота. Теперь каждый магазин может иметь свои собственные настройки телеграм бота.
+Jenkinsfile обновлен для поддержки переменных окружения телеграм бота. Используется один общий токен бота для всех магазинов, но разные chat ID для каждого магазина.
 
 ## Необходимые Credentials в Jenkins
 
-Для каждого магазина нужно создать следующие credentials:
+### 1. Telegram Bot Token (общий для всех магазинов)
 
-### 1. Telegram Bot Token
-
-- **ID**: `{shop}-telegram-bot-token`
+- **ID**: `telegram-bot-token`
 - **Тип**: Secret text
-- **Описание**: Telegram bot token for {shop}
+- **Описание**: Telegram bot token for all shops
 - **Значение**: Токен бота, полученный от @BotFather
 
-### 2. Telegram Chat ID
+### 2. Telegram Chat ID (для каждого магазина)
 
 - **ID**: `{shop}-telegram-chat-id`
 - **Тип**: Secret text
 - **Описание**: Telegram chat ID for {shop}
 - **Значение**: ID чата для отправки сообщений
 
-## Примеры для каждого магазина
+## Примеры credentials
 
-### Магазин "makarov"
+### Общий токен бота (для всех магазинов)
 
 ```
-makarov-telegram-bot-token: 1234567890:ABCdefGHIjklMNOpqrsTUVwxyz
+telegram-bot-token: 1234567890:ABCdefGHIjklMNOpqrsTUVwxyz
+```
+
+### Chat ID для каждого магазина
+
+```
 makarov-telegram-chat-id: -1001234567890
-```
-
-### Магазин "yuz1"
-
-```
-yuz1-telegram-bot-token: 9876543210:ZYXwvuTSRqpoNMLkjihGFEdcba
 yuz1-telegram-chat-id: -1009876543210
-```
-
-### Тестовый магазин "testing"
-
-```
-testing-telegram-bot-token: 5555555555:TestBotTokenForTestingPurposes
 testing-telegram-chat-id: -1005555555555
 ```
 
@@ -54,7 +45,7 @@ testing-telegram-chat-id: -1005555555555
    - Kind: Secret text
    - Scope: Global
    - Secret: [ваш токен/ID]
-   - ID: [имя credential, например "makarov-telegram-bot-token"]
+   - ID: [имя credential, например "telegram-bot-token" или "makarov-telegram-chat-id"]
    - Description: [описание]
 
 ## Переменные окружения в контейнерах
@@ -100,9 +91,9 @@ Environment variables:
 
 ## Тестирование
 
-Для тестирования можно использовать тестовые credentials:
+Для тестирования:
 
-- Создайте тестового бота через @BotFather
-- Добавьте бота в тестовый чат
-- Настройте credentials с префиксом "testing-"
+- Используйте тот же токен бота (`telegram-bot-token`)
+- Создайте отдельный тестовый чат
+- Настройте credential `testing-telegram-chat-id` с ID тестового чата
 - Запустите pipeline на ветке "test"

@@ -1,3 +1,4 @@
+
 // Helper function to wait for container readiness
 def waitForContainer(containerName, maxWaitSeconds = 30) {
     def startTime = System.currentTimeMillis()
@@ -82,8 +83,10 @@ pipeline {
                         currentBuild.result = 'FAILURE'
                         throw e
                     }
+
                 }
             }
+
         }
 
         stage('Build and Test') {
@@ -111,7 +114,7 @@ pipeline {
                             withCredentials([
                                 string(credentialsId: "${shop}-spreadsheet-id", variable: 'SHOP_SPREADSHEET_ID'),
                                 file(credentialsId: 'service-account', variable: 'GOOGLE_SERVICE_ACCOUNT_FILE'),
-                                string(credentialsId: "${shop}-telegram-bot-token", variable: 'TELEGRAM_BOT_TOKEN'),
+                                string(credentialsId: 'telegram-bot-token', variable: 'TELEGRAM_BOT_TOKEN'),
                                 string(credentialsId: "${shop}-telegram-chat-id", variable: 'TELEGRAM_CHAT_ID')
                             ]) {
                                 // Копируем service-account в workspace
@@ -187,6 +190,7 @@ pipeline {
                     }
                 }
             }
+
         }
 
         stage('Push to Registry') {
@@ -211,6 +215,7 @@ pipeline {
             }
         }
 
+
         stage('Deploy and Verify') {
             agent { label 'build-node' }
             when { branch 'main' }
@@ -229,7 +234,7 @@ pipeline {
                             withCredentials([
                                 string(credentialsId: "${shop}-spreadsheet-id", variable: 'SHOP_SPREADSHEET_ID'),
                                 file(credentialsId: 'service-account', variable: 'GOOGLE_SERVICE_ACCOUNT_FILE'),
-                                string(credentialsId: "${shop}-telegram-bot-token", variable: 'TELEGRAM_BOT_TOKEN'),
+                                string(credentialsId: 'telegram-bot-token', variable: 'TELEGRAM_BOT_TOKEN'),
                                 string(credentialsId: "${shop}-telegram-chat-id", variable: 'TELEGRAM_CHAT_ID')
                             ]) {
                                 bat 'copy "%GOOGLE_SERVICE_ACCOUNT_FILE%" service-account.json'
@@ -296,8 +301,10 @@ pipeline {
                     }
                 }
             }
+
         }
     }
+
 
     post {
         always {
@@ -309,10 +316,13 @@ pipeline {
                     } catch (Exception e) {
                         echo "Error during cleanup: ${e.getMessage()}"
                     }
+
                 }
             }
+
         }
         failure { echo 'Pipeline failed!' }
         success { echo 'Pipeline succeeded!' }
+
     }
 }
