@@ -6,7 +6,14 @@ import fs from 'fs';
 import multer from 'multer';
 import path from 'path';
 // @ts-ignore - JavaScript module without types
-const { sendReportToTelegram } = require('../telegram-bot/integration');
+let sendReportToTelegram: any = null;
+try {
+    const telegramIntegration = require('../telegram-bot/integration');
+    sendReportToTelegram = telegramIntegration.sendReportToTelegram;
+} catch (error: any) {
+    console.warn('Telegram integration not available:', error.message);
+    sendReportToTelegram = async () => ({ success: false, message: 'Telegram integration not available' });
+}
 
 // Process error handling
 process.on('uncaughtException', (error) => {
