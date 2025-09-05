@@ -150,6 +150,7 @@ pipeline {
                                 bat """
                                     docker run --name ${shop}_backend_container ^
                                         --network cashbook-network ^
+                                        --restart unless-stopped ^
                                         -d -p 127.0.0.1:${shopPort}:${shopPort} ^
                                         -v "%CD%\\service-account.json:/app/credentials/service-account.json" ^
                                         -e PORT=${shopPort} ^
