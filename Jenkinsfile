@@ -165,13 +165,13 @@ pipeline {
 
                             while (!healthCheckPassed && retryCount < maxRetries) {
                                 try {
-                                    bat "curl -f -m 10 http://127.0.0.1:${shopPort}/api/health"
+                                    bat "curl -f -m 15 http://127.0.0.1:${shopPort}/api/health"
                                     healthCheckPassed = true
                                     echo "Health check passed for ${shop}"
                                 } catch (Exception e) {
                                     retryCount++
                                     echo "Health check failed for ${shop}, attempt ${retryCount}/${maxRetries}: ${e.getMessage()}"
-                                    if (retryCount < maxRetries) bat 'timeout /t 5 /nobreak > nul'
+                                    if (retryCount < maxRetries) bat 'timeout /t 10 /nobreak > nul'
                                     else throw new Exception("Health check failed for ${shop} after ${maxRetries} attempts")
                                 }
                             }
@@ -280,13 +280,13 @@ pipeline {
 
                             while (!healthCheckPassed && retryCount < maxRetries) {
                                 try {
-                                    bat "curl -f -m 10 http://127.0.0.1:${shopPort}/api/health"
+                                    bat "curl -f -m 15 http://127.0.0.1:${shopPort}/api/health"
                                     healthCheckPassed = true
                                     echo "Health check passed for ${shop}"
                                 } catch (Exception e) {
                                     retryCount++
                                     echo "Health check failed for ${shop}, attempt ${retryCount}/${maxRetries}: ${e.getMessage()}"
-                                    if (retryCount < maxRetries) bat 'timeout /t 5 /nobreak > nul'
+                                    if (retryCount < maxRetries) bat 'timeout /t 10 /nobreak > nul'
                                     else throw new Exception("Health check failed for ${shop} after ${maxRetries} attempts")
                                 }
                             }
