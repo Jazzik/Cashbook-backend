@@ -1,4 +1,3 @@
-
 // Helper function to wait for container readiness
 def waitForContainer(containerName, maxWaitSeconds = 30) {
     def startTime = System.currentTimeMillis()
@@ -83,10 +82,8 @@ pipeline {
                         currentBuild.result = 'FAILURE'
                         throw e
                     }
-
                 }
             }
-
         }
 
         stage('Build and Test') {
@@ -96,11 +93,11 @@ pipeline {
                 script {
                     try {
                         echo 'Building Docker image'
-                        bat """
+                        bat '''
                             docker build --build-arg NODE_OPTIONS="--max-old-space-size=4096" ^
                                 -t %DOCKER_REGISTRY%/%IMAGE_NAME%:%COMMIT_HASH% ^
                                 -t %DOCKER_REGISTRY%/%IMAGE_NAME%:%DOCKER_IMAGE_TAG% .
-                        """
+                        '''
                         bat 'docker images | findstr %IMAGE_NAME%'
                         echo 'Docker image built successfully'
 
@@ -117,22 +114,19 @@ pipeline {
                                 string(credentialsId: 'telegram-bot-token', variable: 'TELEGRAM_BOT_TOKEN'),
                                 string(credentialsId: "${shop}-telegram-chat-id", variable: 'TELEGRAM_CHAT_ID')
                             ]) {
-                                // Опциональный thread ID - если credential не существует, переменная будет пустой
-                                def threadIdCredential = ""
+                                def threadIdCredential = ''
                                 try {
                                     withCredentials([string(credentialsId: "${shop}-telegram-thread-id", variable: 'TELEGRAM_THREAD_ID')]) {
                                         threadIdCredential = env.TELEGRAM_THREAD_ID
                                     }
                                 } catch (Exception e) {
                                     echo "Thread ID credential not found for ${shop}, using main chat"
-                                    threadIdCredential = ""
+                                    threadIdCredential = ''
                                 }
-                                
-                                // Копируем service-account в workspace
+
                                 bat 'copy "%GOOGLE_SERVICE_ACCOUNT_FILE%" service-account.json'
 
-                                // Проверка файла
-                                bat """
+                                bat '''
                                     if not exist "service-account.json" (
                                         echo Service account file not found!
                                         exit /b 1
@@ -141,11 +135,11 @@ pipeline {
                                         echo Service account file is empty!
                                         exit /b 1
                                     )
-                                """
+                                '''
 
-                                bat """
+                                bat '''
                                     docker network inspect cashbook-network || docker network create cashbook-network
-                                """
+                                '''
                                 bat "docker rm -f ${shop}_backend_container || exit /b 0"
                                 bat """
                                     docker run --name ${shop}_backend_container ^
@@ -164,11 +158,9 @@ pipeline {
                             }
                         }
 
-                        // Ждем и проверяем контейнеры
                         echo 'Waiting for containers to initialize...'
                         shopsList.each { shop -> waitForContainer("${shop}_backend_container", 30) }
 
-                        // Health check с retry
                         shopsList.each { shop ->
                             def shopPort = env."${shop.toUpperCase()}_PORT"
                             echo "Checking health for ${shop} on port ${shopPort}"
@@ -190,12 +182,10 @@ pipeline {
                             }
                         }
 
-                        // Cleanup test containers
                         shopsList.each { shop ->
                             bat "docker rm -f ${shop}_backend_container || exit /b 0"
                             echo "Cleaned up test container for ${shop}"
                         }
-
                     } catch (Exception e) {
                         echo "Error in Build and Test stage: ${e.getMessage()}"
                         currentBuild.result = 'FAILURE'
@@ -203,7 +193,6 @@ pipeline {
                     }
                 }
             }
-
         }
 
         stage('Push to Registry') {
@@ -213,12 +202,16 @@ pipeline {
                 script {
                     try {
                         echo 'Pushing Docker image to Docker Hub'
-                        bat """
+                        bat '''
                             docker login -u %DOCKER_REGISTRY% -p %DOCKER_PASSWORD%
                             docker push %DOCKER_REGISTRY%/%IMAGE_NAME%:%COMMIT_HASH%
                             docker push %DOCKER_REGISTRY%/%IMAGE_NAME%:%DOCKER_IMAGE_TAG%
-                        """
+                        '''
                         echo 'Docker images pushed successfully'
+
+                        // сохраняем артефакт с протестированным хэшем
+                        writeFile file: 'build_info.txt', text: env.COMMIT_HASH
+                        archiveArtifacts artifacts: 'build_info.txt', fingerprint: true
                     } catch (Exception e) {
                         echo "Error pushing Docker images: ${e.getMessage()}"
                         currentBuild.result = 'FAILURE'
@@ -228,7 +221,6 @@ pipeline {
             }
         }
 
-
         stage('Deploy and Verify') {
             agent { label 'build-node' }
             when { branch 'main' }
@@ -237,8 +229,16 @@ pipeline {
                 unstash 'jenkins-env'
                 script {
                     try {
-                        bat "docker pull %DOCKER_REGISTRY%/%IMAGE_NAME%:%COMMIT_HASH%"
-                        echo "Deploying commit: ${env.COMMIT_HASH}"
+                        // Берем артефакт из test-билда
+                        copyArtifacts(
+                            projectName: env.JOB_NAME,
+                            selector: lastSuccessful()
+                        )
+                        def testedCommit = readFile('build_info.txt').trim()
+                        echo "Deploying tested commit: ${testedCommit}"
+
+                        bat "docker pull %DOCKER_REGISTRY%/%IMAGE_NAME%:${testedCommit}"
+
                         def shopsList = env.SHOPS.split(',')
                         shopsList.each { shop ->
                             def shopPort = env."${shop.toUpperCase()}_PORT"
@@ -250,33 +250,18 @@ pipeline {
                                 string(credentialsId: 'telegram-bot-token', variable: 'TELEGRAM_BOT_TOKEN'),
                                 string(credentialsId: "${shop}-telegram-chat-id", variable: 'TELEGRAM_CHAT_ID')
                             ]) {
-                                // Опциональный thread ID - если credential не существует, переменная будет пустой
-                                def threadIdCredential = ""
+                                def threadIdCredential = ''
                                 try {
                                     withCredentials([string(credentialsId: "${shop}-telegram-thread-id", variable: 'TELEGRAM_THREAD_ID')]) {
                                         threadIdCredential = env.TELEGRAM_THREAD_ID
                                     }
                                 } catch (Exception e) {
                                     echo "Thread ID credential not found for ${shop}, using main chat"
-                                    threadIdCredential = ""
+                                    threadIdCredential = ''
                                 }
-                                
+
                                 bat 'copy "%GOOGLE_SERVICE_ACCOUNT_FILE%" service-account.json'
-
-                                bat """
-                                    if not exist "service-account.json" (
-                                        echo Service account file not found!
-                                        exit /b 1
-                                    )
-                                    for %%F in ("service-account.json") do if %%~zF==0 (
-                                        echo Service account file is empty!
-                                        exit /b 1
-                                    )
-                                """
-
-                                bat "docker network inspect cashbook-network || docker network create cashbook-network"
                                 bat "docker rm -f ${shop}_backend_container || exit /b 0"
-
                                 bat """
                                     docker run --name ${shop}_backend_container ^
                                         --network cashbook-network ^
@@ -288,7 +273,7 @@ pipeline {
                                         -e TELEGRAM_BOT_TOKEN=%TELEGRAM_BOT_TOKEN% ^
                                         -e TELEGRAM_CHAT_ID=%TELEGRAM_CHAT_ID% ^
                                         -e TELEGRAM_THREAD_ID=${threadIdCredential} ^
-                                        %DOCKER_REGISTRY%/%IMAGE_NAME%:%COMMIT_HASH%
+                                        %DOCKER_REGISTRY%/%IMAGE_NAME%:${testedCommit}
                                 """
                             }
                         }
@@ -296,7 +281,6 @@ pipeline {
                         echo 'Waiting for containers to initialize...'
                         shopsList.each { shop -> waitForContainer("${shop}_backend_container", 30) }
 
-                        // Health check
                         shopsList.each { shop ->
                             def shopPort = env."${shop.toUpperCase()}_PORT"
                             def healthCheckPassed = false
@@ -318,7 +302,6 @@ pipeline {
                         }
 
                         echo 'Production containers deployed and verified successfully'
-
                     } catch (Exception e) {
                         echo "Error in Deploy and Verify stage: ${e.getMessage()}"
                         currentBuild.result = 'FAILURE'
@@ -326,28 +309,23 @@ pipeline {
                     }
                 }
             }
-
         }
     }
-
 
     post {
         always {
             node('build-node') {
                 script {
                     try {
-                        bat "docker rm -f testing_backend_container || exit /b 0"
+                        bat 'docker rm -f testing_backend_container || exit /b 0'
                         echo 'Cleanup completed'
                     } catch (Exception e) {
                         echo "Error during cleanup: ${e.getMessage()}"
                     }
-
                 }
             }
-
         }
         failure { echo 'Pipeline failed!' }
         success { echo 'Pipeline succeeded!' }
-
     }
 }
