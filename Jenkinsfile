@@ -237,8 +237,8 @@ pipeline {
                 unstash 'jenkins-env'
                 script {
                     try {
-                        bat "docker pull %DOCKER_REGISTRY%/%IMAGE_NAME%:%DOCKER_IMAGE_TAG%"
-
+                        bat "docker pull %DOCKER_REGISTRY%/%IMAGE_NAME%:%COMMIT_HASH%"
+                        echo "Deploying commit: ${env.COMMIT_HASH}"
                         def shopsList = env.SHOPS.split(',')
                         shopsList.each { shop ->
                             def shopPort = env."${shop.toUpperCase()}_PORT"
@@ -288,7 +288,7 @@ pipeline {
                                         -e TELEGRAM_BOT_TOKEN=%TELEGRAM_BOT_TOKEN% ^
                                         -e TELEGRAM_CHAT_ID=%TELEGRAM_CHAT_ID% ^
                                         -e TELEGRAM_THREAD_ID=${threadIdCredential} ^
-                                        %DOCKER_REGISTRY%/%IMAGE_NAME%:%DOCKER_IMAGE_TAG%
+                                        %DOCKER_REGISTRY%/%IMAGE_NAME%:%COMMIT_HASH%
                                 """
                             }
                         }
