@@ -57,9 +57,10 @@ pipeline {
                             env.SHOPS = 'testing'
                             env.TESTING_PORT = '3999'
                         } else if (env.BRANCH_NAME == 'main') {
-                            env.SHOPS = 'makarov,yuz1'
+                            env.SHOPS = 'makarov,makarov2,yuz1'
                             env.MAKAROV_PORT = '5000'
-                            env.YUZ1_PORT = '5001'
+                            env.MAKAROV2_PORT = '5001'
+                            env.YUZ1_PORT = '5002'
                         } else {
                             echo "Branch ${env.BRANCH_NAME} not configured for deployment"
                             env.SHOPS = ''
