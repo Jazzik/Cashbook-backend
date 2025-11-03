@@ -138,10 +138,31 @@ app.post('/api/shift-data', upload.single('screenshot'), async (req, res) => {
             terminalRevenue: terminal - terminalReturns + terminalTransfer
         });
 
-        // Format expenses and returns for better readability in Google Sheets
-        const expensesFormatted = expenses.map((e: any) => `${e.name}: ${e.amount}`).join('; ');
-        const cashReturnsFormatted = cashReturns.items.map((r: any) => `${r.name}: ${r.amount}`).join('; ');
-        const cashDepositsFormatted = cashDeposits.items.map((d: any) => `${d.name}: ${d.amount}`).join('; ');
+        // Format expenses and returns as JSON key-value objects for Google Sheets
+        const expensesFormatted = JSON.stringify(
+            Object.fromEntries(
+                (Array.isArray(expenses) ? expenses : []).map((e: any) => [
+                    String(e?.name ?? ''),
+                    String(e?.amount ?? 0)
+                ])
+            )
+        );
+        const cashReturnsFormatted = JSON.stringify(
+            Object.fromEntries(
+                (cashReturns && Array.isArray(cashReturns.items) ? cashReturns.items : []).map((r: any) => [
+                    String(r?.name ?? ''),
+                    String(r?.amount ?? 0)
+                ])
+            )
+        );
+        const cashDepositsFormatted = JSON.stringify(
+            Object.fromEntries(
+                (cashDeposits && Array.isArray(cashDeposits.items) ? cashDeposits.items : []).map((d: any) => [
+                    String(d?.name ?? ''),
+                    String(d?.amount ?? 0)
+                ])
+            )
+        );
 
         // Calculate cash revenue
         const cashRevenue = cashInRegister.total - initialBalance.total + expenses.reduce((sum: number, e: any) => sum + e.amount, 0) + cashReturns.total - cashDeposits.total;

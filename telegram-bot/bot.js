@@ -148,9 +148,22 @@ async function sendLatestImage() {
     }
 
     // Отправляем изображение
-    await bot.sendPhoto(chatId, imagePath, sendOptions);
+    const sentMessage = await bot.sendPhoto(chatId, imagePath, sendOptions);
 
-    console.log("Изображение успешно отправлено");
+    // Детализируем успешный ответ Telegram API
+    if (sentMessage && sentMessage.message_id) {
+      console.log(
+        `Изображение успешно отправлено, message_id=${
+          sentMessage.message_id
+        }, chat_id=${sentMessage.chat?.id}, thread_id=${
+          sentMessage.message_thread_id ||
+          sendOptions.message_thread_id ||
+          "n/a"
+        }`
+      );
+    } else {
+      console.log("Изображение успешно отправлено (без деталей ответа)");
+    }
 
     // Удаляем файл после успешной отправки
     fs.unlinkSync(imagePath);
@@ -160,11 +173,16 @@ async function sendLatestImage() {
 
     // Если ошибка связана с отправкой, не удаляем файл
     if (
-      error.code === "ETELEGRAM" ||
-      error.message.includes("chat not found")
+      (error && error.code === "ETELEGRAM") ||
+      (error &&
+        typeof error.message === "string" &&
+        error.message.includes("chat not found"))
     ) {
       console.error("Ошибка Telegram API. Файл не удален.");
     }
+
+    // Пробрасываем ошибку выше, чтобы вызывающая сторона могла корректно отреагировать
+    throw error;
   }
 }
 
