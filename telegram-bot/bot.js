@@ -9,11 +9,31 @@ const chatId = process.env.TELEGRAM_CHAT_ID;
 const threadId = process.env.TELEGRAM_THREAD_ID; // Опциональный thread ID
 const uploadsPath = path.join(__dirname, "../uploads");
 
+// ВАЖНО:
+// Этот файл используется как:
+// 1) отдельный CLI-скрипт (node bot.js / node listen-messages.js)
+// 2) модуль, который подключается из backend через telegram-bot/integration.js
+//
+// Нам НЕЛЬЗЯ завершать весь процесс (process.exit), когда файл подключается как модуль,
+// иначе при отсутствии TELEGRAM_* переменных "падает" весь backend.
+//
+// Поэтому:
+// - если файл запущен напрямую (require.main === module) — ведём себя как раньше и выходим с ошибкой
+// - если файл подключён как модуль — кидаем исключение, которое будет поймано в server.ts,
+//   и Telegram-интеграция просто будет отключена, а основная логика (Google Sheets) продолжит работать
 if (!token || !chatId) {
-  console.error(
-    "Ошибка: Необходимо установить TELEGRAM_BOT_TOKEN и TELEGRAM_CHAT_ID в переменных окружения"
-  );
-  process.exit(1);
+  const message =
+    "Ошибка: Необходимо установить TELEGRAM_BOT_TOKEN и TELEGRAM_CHAT_ID в переменных окружения";
+
+  console.error(message);
+
+  if (require.main === module) {
+    // CLI-режим: завершаем процесс, чтобы явно показать проблему настройки
+    process.exit(1);
+  } else {
+    // Рабочий backend: даём подняться приложению, а Telegram просто будет отключён
+    throw new Error(message);
+  }
 }
 
 // Создание экземпляра бота
@@ -204,7 +224,13 @@ async function runBot() {
     console.log("✅ Бот завершил работу");
   } catch (error) {
     console.error("❌ Критическая ошибка:", error);
-    process.exit(1);
+
+    if (require.main === module) {
+      // Только в CLI-режиме считаем это фатальной ошибкой
+      process.exit(1);
+    }
+    // В режиме модуля просто пробрасываем ошибку наверх — её обработает вызывающая сторона
+    throw error;
   }
 }
 
