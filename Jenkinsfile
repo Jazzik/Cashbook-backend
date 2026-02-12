@@ -113,8 +113,10 @@ pipeline {
                             withCredentials([
                                 string(credentialsId: "${shop}-spreadsheet-id", variable: 'SHOP_SPREADSHEET_ID'),
                                 file(credentialsId: 'service-account', variable: 'GOOGLE_SERVICE_ACCOUNT_FILE'),
-                                string(credentialsId: 'telegram-bot-token', variable: 'TELEGRAM_BOT_TOKEN'),
-                                string(credentialsId: "${shop}-telegram-chat-id", variable: 'TELEGRAM_CHAT_ID')
+                                string(credentialsId: "${shop}-token-yougile", variable: 'TOKEN_YOUGILE'),
+                                string(credentialsId: "${shop}-yougile-chat-id", variable: 'YOUGILE_CHAT_ID'),
+                                // string(credentialsId: 'telegram-bot-token', variable: 'TELEGRAM_BOT_TOKEN'),
+                                // string(credentialsId: "${shop}-telegram-chat-id", variable: 'TELEGRAM_CHAT_ID')
                             ]) {
                                 // Опциональный thread ID - если credential не существует, переменная будет пустой
                                 def threadIdCredential = ''
@@ -155,9 +157,10 @@ pipeline {
                                         -e PORT=${shopPort} ^
                                         -e GOOGLE_SERVICE_ACCOUNT_KEY=/app/credentials/service-account.json ^
                                         -e SPREADSHEET_ID=%SHOP_SPREADSHEET_ID% ^
-                                        -e TELEGRAM_BOT_TOKEN=%TELEGRAM_BOT_TOKEN% ^
-                                        -e TELEGRAM_CHAT_ID=%TELEGRAM_CHAT_ID% ^
+                                        -e TOKEN_YOUGILE=%TOKEN_YOUGILE% ^
+                                        -e YOUGILE_CHAT_ID=%YOUGILE_CHAT_ID% ^
                                         -e TELEGRAM_THREAD_ID=${threadIdCredential} ^
+
                                         %DOCKER_REGISTRY%/%IMAGE_NAME%:%DOCKER_IMAGE_TAG%
                                 """
                             }
@@ -243,8 +246,10 @@ pipeline {
                             withCredentials([
                                 string(credentialsId: "${shop}-spreadsheet-id", variable: 'SHOP_SPREADSHEET_ID'),
                                 file(credentialsId: 'service-account', variable: 'GOOGLE_SERVICE_ACCOUNT_FILE'),
-                                string(credentialsId: 'telegram-bot-token', variable: 'TELEGRAM_BOT_TOKEN'),
-                                string(credentialsId: "${shop}-telegram-chat-id", variable: 'TELEGRAM_CHAT_ID')
+                                string(credentialsId: "${shop}-token-yougile", variable: 'TOKEN_YOUGILE'),
+                                string(credentialsId: "${shop}-yougile-chat-id", variable: 'YOUGILE_CHAT_ID'),
+                                // string(credentialsId: 'telegram-bot-token', variable: 'TELEGRAM_BOT_TOKEN'),
+                                // string(credentialsId: "${shop}-telegram-chat-id", variable: 'TELEGRAM_CHAT_ID')
                             ]) {
                                 // Опциональный thread ID - если credential не существует, переменная будет пустой
                                 def threadIdCredential = ''
@@ -282,8 +287,8 @@ pipeline {
                                         -e GOOGLE_SERVICE_ACCOUNT_KEY=/app/credentials/service-account.json ^
                                         -e SPREADSHEET_ID=%SHOP_SPREADSHEET_ID% ^
                                         --restart unless-stopped ^
-                                        -e TELEGRAM_BOT_TOKEN=%TELEGRAM_BOT_TOKEN% ^
-                                        -e TELEGRAM_CHAT_ID=%TELEGRAM_CHAT_ID% ^
+                                        -e TOKEN_YOUGILE=%TOKEN_YOUGILE% ^
+                                        -e YOUGILE_CHAT_ID=%YOUGILE_CHAT_ID% ^
                                         -e TELEGRAM_THREAD_ID=${threadIdCredential} ^
                                         %DOCKER_REGISTRY%/%IMAGE_NAME%:%DOCKER_IMAGE_TAG%
                                 """
