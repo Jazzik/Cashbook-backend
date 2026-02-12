@@ -159,8 +159,6 @@ pipeline {
                                         -e SPREADSHEET_ID=%SHOP_SPREADSHEET_ID% ^
                                         -e TOKEN_YOUGILE=%TOKEN_YOUGILE% ^
                                         -e YOUGILE_CHAT_ID=%YOUGILE_CHAT_ID% ^
-                                        -e TELEGRAM_THREAD_ID=${threadIdCredential} ^
-
                                         %DOCKER_REGISTRY%/%IMAGE_NAME%:%DOCKER_IMAGE_TAG%
                                 """
                             }
@@ -289,7 +287,6 @@ pipeline {
                                         --restart unless-stopped ^
                                         -e TOKEN_YOUGILE=%TOKEN_YOUGILE% ^
                                         -e YOUGILE_CHAT_ID=%YOUGILE_CHAT_ID% ^
-                                        -e TELEGRAM_THREAD_ID=${threadIdCredential} ^
                                         %DOCKER_REGISTRY%/%IMAGE_NAME%:%DOCKER_IMAGE_TAG%
                                 """
                             }
