@@ -6,14 +6,14 @@ import fs from 'fs';
 import multer from 'multer';
 import path from 'path';
 // @ts-ignore - JavaScript module without types
-let sendReportToTelegram: any = null;
-try {
-    const telegramIntegration = require('../telegram-bot/integration');
-    sendReportToTelegram = telegramIntegration.sendReportToTelegram;
-} catch (error: any) {
-    console.warn('Telegram integration not available:', error.message);
-    sendReportToTelegram = async () => ({ success: false, message: 'Telegram integration not available' });
-}
+// let sendReportToYougile: any = null;
+// try {
+//     const telegramIntegration = require('../yougile-bot/integration');
+//     sendReportToYougile = telegramIntegration.sendReportToTelegram;
+// } catch (error: any) {
+//     console.warn('Telegram integration not available:', error.message);
+//     sendReportToYougile = async () => ({ success: false, message: 'Telegram integration not available' });
+// }
 
 // Process error handling
 process.on('uncaughtException', (error) => {
@@ -132,11 +132,13 @@ app.post('/api/shift-data', upload.single('screenshot'), async (req, res) => {
         } = shiftData;
 
         console.log('Parsed shift data:', {
-            terminal,
+            terminal: terminal,
             terminalReturns,
             terminalTransfer,
-            terminalRevenue: terminal - terminalReturns + terminalTransfer
+            nonCashRevenue: terminal - terminalReturns + terminalTransfer
         });
+
+        const formattedDate = date.split("-").reverse().join(".");
 
         // Format expenses and returns as JSON key-value objects for Google Sheets
         const expensesFormatted = JSON.stringify(
@@ -165,13 +167,16 @@ app.post('/api/shift-data', upload.single('screenshot'), async (req, res) => {
         );
 
         // Calculate cash revenue
-        const cashRevenue = cashInRegister.total - initialBalance.total + expenses.reduce((sum: number, e: any) => sum + e.amount, 0) + cashReturns.total - cashDeposits.total;
+        const cashRevenue = cashInRegister.total - initialBalance.total + expenses.reduce((sum: number, e: any) => sum + e.amount, 0) - cashDeposits.total;
+        //Calculate cash revenue with terminal revenue
 
+        const nonCashRevenue = terminal - terminalReturns + terminalTransfer
+        const totalRevenue = cashRevenue + nonCashRevenue;
         // Create a row for Google Sheets
         const row = [
             date,                    // A
             initialBalance.total,    // B
-            terminal,                // C - Исходная сумма по терминалу
+            terminal,            // C - Исходная сумма по терминалу
             terminalReturns,         // D - Возвраты по терминалу
             terminalTransfer,        // E - Переводы на карту
             cashInRegister.total,    // F
@@ -186,7 +191,7 @@ app.post('/api/shift-data', upload.single('screenshot'), async (req, res) => {
         console.log('=== Подробные данные для Google Sheets ===');
         console.log('A. Дата:', date);
         console.log('B. Начальный остаток:', initialBalance.total);
-        console.log('C. Терминал:', terminal);
+        console.log('C. Всего безнал:', terminal);
         console.log('D. Возвраты по терминалу:', terminalReturns);
         console.log('E. Переводы на карту:', terminalTransfer);
         console.log('F. Наличные в кассе:', cashInRegister.total);
@@ -230,17 +235,72 @@ app.post('/api/shift-data', upload.single('screenshot'), async (req, res) => {
 
         console.log('Google Sheets update response:', updateResponse.data);
 
-        // Отправляем отчет в телеграм после успешного сохранения данных
-        let telegramResult = null;
+        // Отправляем отчет в yougile после успешного сохранения данных
+        let yougileResult = null;
         try {
-            console.log('📤 Отправка отчета в Telegram...');
-            telegramResult = await sendReportToTelegram();
-            console.log('Telegram result:', telegramResult);
-        } catch (telegramError: any) {
-            console.error('❌ Ошибка отправки в Telegram:', telegramError);
-            telegramResult = {
+            console.log('📤 Отправка отчета в Yougile...');
+            /////////////////////////////////////////////////////
+            // const chat_id = "fb7d0b2f-40ef-4ef2-8bab-312ee0f50e87";
+            const chat_id = process.env.YOUGILE_CHAT_ID;
+            const url = `https://ru.yougile.com/api-v2/chats/${chat_id}/messages`;
+            const token_yougile = process.env.TOKEN_YOUGILE;
+            const response = await fetch(url, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token_yougile}`
+                },
+                body: JSON.stringify({
+                    text: "new message",
+                    textHtml: `
+<b>СМЕНА ОТ ${formattedDate}</b>
+
+<b>ВЫРУЧКА (с учетом возвратов)</b>
+• Наличными: ${cashRevenue}₽
+• Безналичными: ${nonCashRevenue}₽
+ИТОГО: <b>${totalRevenue}₽</b>
+───────────────
+<b>Безналичные операции</b>
+• Перевод: ${terminalTransfer}₽
+• Терминал: ${terminal}₽
+• Возврат по терминалу: ${terminalReturns}₽
+───────────────
+<b>Остаток на начало смены</b>
+• ${initialBalance.total}₽
+───────────────
+<b>Внесение наличности</b>
+• ${cashDepositsFormatted !== "{}" ? cashDepositsFormatted : "Отсутствуют"}
+───────────────
+<b>Расходы</b>
+• ${expensesFormatted !== "{}" ? expensesFormatted : "Отсутствуют"}
+───────────────
+<b>Возвраты наличными</b>
+• ${cashReturnsFormatted !== "{}" ? cashReturnsFormatted : "Отсутствуют"}
+───────────────
+<b>Наличные в кассе перед инкассацией</b>
+• ${cashInRegister.total}₽
+───────────────
+<b>Инкассация</b>
+• ${cashWithdrawal.total}₽
+───────────────
+<b>Остаток в кассе на конец смены</b>
+• <b>${finalBalance}₽</b>
+`
+                })
+            });
+
+            const data = await response.json();
+            console.log(data);
+            /////////////////////////////////////////////////////
+
+            yougileResult = data.status;
+
+            console.log('Yougile result:', yougileResult);
+        } catch (yougileError: any) {
+            console.error('❌ Ошибка отправки в Yougile:', yougileError);
+            yougileResult = {
                 success: false,
-                message: `Ошибка отправки в Telegram: ${telegramError?.message || 'Unknown error'}`
+                message: `Ошибка отправки в Yougile: ${yougileError?.message || 'Unknown error'}`
             };
         }
 
@@ -251,7 +311,7 @@ app.post('/api/shift-data', upload.single('screenshot'), async (req, res) => {
                 filename: req.file?.filename,
                 path: screenshotPath
             } : null,
-            telegram: telegramResult
+            telegram: yougileResult
         });
     } catch (error) {
         console.error('Error saving shift data:', error);
@@ -271,8 +331,8 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`- PORT: ${process.env.PORT}`);
     console.log(`- GOOGLE_SERVICE_ACCOUNT_KEY: ${process.env.GOOGLE_SERVICE_ACCOUNT_KEY}`);
     console.log(`- SPREADSHEET_ID: ${process.env.SPREADSHEET_ID}`);
-    console.log(`- TELEGRAM_BOT_TOKEN: ${process.env.TELEGRAM_BOT_TOKEN ? 'Set' : 'Not set'}`);
-    console.log(`- TELEGRAM_CHAT_ID: ${process.env.TELEGRAM_CHAT_ID ? 'Set' : 'Not set'}`);
+    console.log(`- YOUGILE_CHAT_ID: ${process.env.YOUGILE_CHAT_ID ? 'Set' : 'Not set'}`);
+    console.log(`- TOKEN_YOUGILE: ${process.env.TOKEN_YOUGILE ? 'Set' : 'Not set'}`);
 
     // Check if service account file exists
     try {
