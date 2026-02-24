@@ -1,4 +1,3 @@
-
 // Helper function to wait for container readiness
 def waitForContainer(containerName, maxWaitSeconds = 30) {
     def startTime = System.currentTimeMillis()
@@ -6,8 +5,8 @@ def waitForContainer(containerName, maxWaitSeconds = 30) {
 
     while (System.currentTimeMillis() - startTime < maxWaitMs) {
         try {
-            def containerStatus = bat(
-                script: "docker ps -f name=${containerName} --format \"{{.Status}}\"",
+            def containerStatus = sh(
+                script: "docker ps -f name=${containerName} --format '{{.Status}}'",
                 returnStdout: true
             ).trim()
 
@@ -16,14 +15,110 @@ def waitForContainer(containerName, maxWaitSeconds = 30) {
                 return true
             }
 
-            bat 'timeout /t 2 /nobreak > nul'
+            sh 'sleep 2'
         } catch (Exception e) {
             echo "Waiting for container ${containerName} to be ready..."
-            bat 'timeout /t 2 /nobreak > nul'
+            sh 'sleep 2'
         }
     }
 
     error "Container ${containerName} failed to become ready within ${maxWaitSeconds} seconds"
+}
+
+// Helper function to deploy shops on the current node
+def deployShops(shopsList, imageTag) {
+    sh """
+        # Ensure Docker network exists
+        docker network inspect cashbook-network || docker network create cashbook-network
+        # Pull the image
+        docker pull \$DOCKER_REGISTRY/\$IMAGE_NAME:${imageTag}
+    """
+
+    shopsList.each { shop ->
+        def shopPort = env."${shop.toUpperCase()}_PORT"
+        echo "Deploying ${shop} on port ${shopPort}"
+
+        withCredentials([
+            string(credentialsId: "${shop}-spreadsheet-id", variable: 'SHOP_SPREADSHEET_ID'),
+            file(credentialsId: 'service-account', variable: 'GOOGLE_SERVICE_ACCOUNT_FILE'),
+            string(credentialsId: "${shop}-token-yougile", variable: 'TOKEN_YOUGILE'),
+            string(credentialsId: "${shop}-yougile-chat-id", variable: 'YOUGILE_CHAT_ID'),
+        // string(credentialsId: 'telegram-bot-token', variable: 'TELEGRAM_BOT_TOKEN'),
+        // string(credentialsId: "${shop}-telegram-chat-id", variable: 'TELEGRAM_CHAT_ID')
+        ]) {
+            // Опциональный thread ID - если credential не существует, переменная будет пустой
+            def threadIdCredential = ''
+            try {
+                withCredentials([string(credentialsId: "${shop}-telegram-thread-id", variable: 'TELEGRAM_THREAD_ID')]) {
+                    threadIdCredential = env.TELEGRAM_THREAD_ID
+                }
+            } catch (Exception e) {
+                echo "Thread ID credential not found for ${shop}, using main chat"
+                threadIdCredential = ''
+            }
+
+            // Копируем service-account в workspace
+            sh 'cp "$GOOGLE_SERVICE_ACCOUNT_FILE" service-account.json'
+
+            // Проверка файла
+            sh '''
+                if [ ! -f "service-account.json" ]; then
+                    echo "Service account file not found!"
+                    exit 1
+                fi
+                if [ ! -s "service-account.json" ]; then
+                    echo "Service account file is empty!"
+                    exit 1
+                fi
+            '''
+
+            sh """
+                docker rm -f ${shop}_backend_container || true
+                docker run --name ${shop}_backend_container \\
+                    --network cashbook-network \\
+                    --restart unless-stopped \\
+                    -d -p 0.0.0.0:${shopPort}:${shopPort} \\
+                    -v "\$(pwd)/service-account.json:/app/credentials/service-account.json" \\
+                    -e PORT=${shopPort} \\
+                    -e GOOGLE_SERVICE_ACCOUNT_KEY=/app/credentials/service-account.json \\
+                    -e SPREADSHEET_ID=\$SHOP_SPREADSHEET_ID \\
+                    -e TOKEN_YOUGILE=\$TOKEN_YOUGILE \\
+                    -e YOUGILE_CHAT_ID=\$YOUGILE_CHAT_ID \\
+                    \$DOCKER_REGISTRY/\$IMAGE_NAME:${imageTag}
+            """
+        }
+    }
+
+    // Ждем и проверяем контейнеры
+    shopsList.each { shop ->
+        waitForContainer("${shop}_backend_container", 30)
+    }
+
+    // Health check с retry
+    shopsList.each { shop ->
+        def shopPort = env."${shop.toUpperCase()}_PORT"
+        echo "Health check for ${shop} on port ${shopPort}"
+
+        def healthCheckPassed = false
+        def maxRetries = 3
+        def retryCount = 0
+
+        while (!healthCheckPassed && retryCount < maxRetries) {
+            try {
+                sh "curl -f -m 15 http://127.0.0.1:${shopPort}/api/health"
+                healthCheckPassed = true
+                echo "Health check passed for ${shop}"
+            } catch (Exception e) {
+                retryCount++
+                echo "Health check failed for ${shop}, attempt ${retryCount}/${maxRetries}: ${e.getMessage()}"
+                if (retryCount < maxRetries) {
+                    sh 'sleep 10'
+                } else {
+                    throw new Exception("Health check failed for ${shop} after ${maxRetries} attempts")
+                }
+            }
+        }
+    }
 }
 
 pipeline {
@@ -34,11 +129,15 @@ pipeline {
         DOCKER_REGISTRY = credentials('DOCKER_REGISTRY')
         DOCKER_PASSWORD = credentials('DOCKER_PASSWORD')
         DOCKER_IMAGE_TAG = 'latest'
+
+        // Перечисли все Linux-ноды через запятую — имена нод в Jenkins
+        // Например: DEPLOY_NODES = 'linux-node-1,linux-node-2'
+        DEPLOY_NODES = 'linux-node-1'
     }
 
     stages {
         stage('Checkout') {
-            agent { label 'build-node' }
+            agent { label 'linux' }
             steps {
                 checkout scm
                 stash name: 'source-code', includes: '**/*'
@@ -46,7 +145,7 @@ pipeline {
         }
 
         stage('Configure') {
-            agent { label 'build-node' }
+            agent { label 'linux' }
             steps {
                 script {
                     try {
@@ -73,6 +172,7 @@ pipeline {
                         } else if (env.BRANCH_NAME == 'main') {
                             envVars += """
                                 MAKAROV_PORT='${env.MAKAROV_PORT}'
+                                MAKAROV2_PORT='${env.MAKAROV2_PORT}'
                                 YUZ1_PORT='${env.YUZ1_PORT}'
                             """
                         }
@@ -88,23 +188,28 @@ pipeline {
             }
         }
 
-        stage('Build and Test') {
-            agent { label 'build-node' }
+        stage('Build, Test and Push') {
+            // Single agent — image must be built and pushed on the same node
+            agent { label 'linux' }
             when { branch 'test' }
             steps {
                 script {
                     try {
                         echo 'Building Docker image'
-                        bat '''
-                            docker build --build-arg NODE_OPTIONS="--max-old-space-size=4096" ^
-                                -t %DOCKER_REGISTRY%/%IMAGE_NAME%:%COMMIT_HASH% ^
-                                -t %DOCKER_REGISTRY%/%IMAGE_NAME%:%DOCKER_IMAGE_TAG% .
+                        sh '''
+                            docker build --build-arg NODE_OPTIONS="--max-old-space-size=4096" \
+                                -t $DOCKER_REGISTRY/$IMAGE_NAME:$COMMIT_HASH \
+                                -t $DOCKER_REGISTRY/$IMAGE_NAME:$DOCKER_IMAGE_TAG .
                         '''
-                        bat 'docker images | findstr %IMAGE_NAME%'
+                        sh 'docker images | grep $IMAGE_NAME'
                         echo 'Docker image built successfully'
 
                         unstash 'jenkins-env'
                         def shopsList = env.SHOPS.split(',')
+
+                        sh '''
+                            docker network inspect cashbook-network || docker network create cashbook-network
+                        '''
 
                         shopsList.each { shop ->
                             def shopPort = env."${shop.toUpperCase()}_PORT"
@@ -115,10 +220,9 @@ pipeline {
                                 file(credentialsId: 'service-account', variable: 'GOOGLE_SERVICE_ACCOUNT_FILE'),
                                 string(credentialsId: "${shop}-token-yougile", variable: 'TOKEN_YOUGILE'),
                                 string(credentialsId: "${shop}-yougile-chat-id", variable: 'YOUGILE_CHAT_ID'),
-                                // string(credentialsId: 'telegram-bot-token', variable: 'TELEGRAM_BOT_TOKEN'),
-                                // string(credentialsId: "${shop}-telegram-chat-id", variable: 'TELEGRAM_CHAT_ID')
+                            // string(credentialsId: 'telegram-bot-token', variable: 'TELEGRAM_BOT_TOKEN'),
+                            // string(credentialsId: "${shop}-telegram-chat-id", variable: 'TELEGRAM_CHAT_ID')
                             ]) {
-                                // Опциональный thread ID - если credential не существует, переменная будет пустой
                                 def threadIdCredential = ''
                                 try {
                                     withCredentials([string(credentialsId: "${shop}-telegram-thread-id", variable: 'TELEGRAM_THREAD_ID')]) {
@@ -129,46 +233,38 @@ pipeline {
                                     threadIdCredential = ''
                                 }
 
-                                // Копируем service-account в workspace
-                                bat 'copy "%GOOGLE_SERVICE_ACCOUNT_FILE%" service-account.json'
+                                sh 'cp "$GOOGLE_SERVICE_ACCOUNT_FILE" service-account.json'
 
-                                // Проверка файла
-                                bat '''
-                                    if not exist "service-account.json" (
-                                        echo Service account file not found!
-                                        exit /b 1
-                                    )
-                                    for %%F in ("service-account.json") do if %%~zF==0 (
-                                        echo Service account file is empty!
-                                        exit /b 1
-                                    )
+                                sh '''
+                                    if [ ! -f "service-account.json" ]; then
+                                        echo "Service account file not found!"
+                                        exit 1
+                                    fi
+                                    if [ ! -s "service-account.json" ]; then
+                                        echo "Service account file is empty!"
+                                        exit 1
+                                    fi
                                 '''
 
-                                bat '''
-                                    docker network inspect cashbook-network || docker network create cashbook-network
-                                '''
-                                bat "docker rm -f ${shop}_backend_container || exit /b 0"
-                                bat """
-                                    docker run --name ${shop}_backend_container ^
-                                        --network cashbook-network ^
-                                        --restart unless-stopped ^
-                                        -d -p 0.0.0.0:${shopPort}:${shopPort} ^
-                                        -v "%CD%\\service-account.json:/app/credentials/service-account.json" ^
-                                        -e PORT=${shopPort} ^
-                                        -e GOOGLE_SERVICE_ACCOUNT_KEY=/app/credentials/service-account.json ^
-                                        -e SPREADSHEET_ID=%SHOP_SPREADSHEET_ID% ^
-                                        -e TOKEN_YOUGILE=%TOKEN_YOUGILE% ^
-                                        -e YOUGILE_CHAT_ID=%YOUGILE_CHAT_ID% ^
-                                        %DOCKER_REGISTRY%/%IMAGE_NAME%:%DOCKER_IMAGE_TAG%
+                                sh """
+                                    docker rm -f ${shop}_backend_container || true
+                                    docker run --name ${shop}_backend_container \\
+                                        --network cashbook-network \\
+                                        -d -p 0.0.0.0:${shopPort}:${shopPort} \\
+                                        -v "\$(pwd)/service-account.json:/app/credentials/service-account.json" \\
+                                        -e PORT=${shopPort} \\
+                                        -e GOOGLE_SERVICE_ACCOUNT_KEY=/app/credentials/service-account.json \\
+                                        -e SPREADSHEET_ID=\$SHOP_SPREADSHEET_ID \\
+                                        -e TOKEN_YOUGILE=\$TOKEN_YOUGILE \\
+                                        -e YOUGILE_CHAT_ID=\$YOUGILE_CHAT_ID \\
+                                        \$DOCKER_REGISTRY/\$IMAGE_NAME:\$DOCKER_IMAGE_TAG
                                 """
                             }
                         }
 
-                        // Ждем и проверяем контейнеры
                         echo 'Waiting for containers to initialize...'
                         shopsList.each { shop -> waitForContainer("${shop}_backend_container", 30) }
 
-                        // Health check с retry
                         shopsList.each { shop ->
                             def shopPort = env."${shop.toUpperCase()}_PORT"
                             echo "Checking health for ${shop} on port ${shopPort}"
@@ -178,47 +274,37 @@ pipeline {
 
                             while (!healthCheckPassed && retryCount < maxRetries) {
                                 try {
-                                    bat "curl -f -m 15 http://127.0.0.1:${shopPort}/api/health"
+                                    sh "curl -f -m 15 http://127.0.0.1:${shopPort}/api/health"
                                     healthCheckPassed = true
                                     echo "Health check passed for ${shop}"
                                 } catch (Exception e) {
                                     retryCount++
                                     echo "Health check failed for ${shop}, attempt ${retryCount}/${maxRetries}: ${e.getMessage()}"
-                                    if (retryCount < maxRetries) bat 'timeout /t 10 /nobreak > nul'
-                                    else throw new Exception("Health check failed for ${shop} after ${maxRetries} attempts")
+                                    if (retryCount < maxRetries) {
+                                        sh 'sleep 10'
+                                    } else {
+                                        throw new Exception("Health check failed for ${shop} after ${maxRetries} attempts")
+                                    }
                                 }
                             }
                         }
 
                         // Cleanup test containers
                         shopsList.each { shop ->
-                            bat "docker rm -f ${shop}_backend_container || exit /b 0"
+                            sh "docker rm -f ${shop}_backend_container || true"
                             echo "Cleaned up test container for ${shop}"
                         }
-                    } catch (Exception e) {
-                        echo "Error in Build and Test stage: ${e.getMessage()}"
-                        currentBuild.result = 'FAILURE'
-                        throw e
-                    }
-                }
-            }
-        }
 
-        stage('Push to Registry') {
-            agent { label 'build-node' }
-            when { branch 'test' }
-            steps {
-                script {
-                    try {
+                        // Push on the same node where image was built
                         echo 'Pushing Docker image to Docker Hub'
-                        bat '''
-                            docker login -u %DOCKER_REGISTRY% -p %DOCKER_PASSWORD%
-                            docker push %DOCKER_REGISTRY%/%IMAGE_NAME%:%COMMIT_HASH%
-                            docker push %DOCKER_REGISTRY%/%IMAGE_NAME%:%DOCKER_IMAGE_TAG%
+                        sh '''
+                            docker login -u $DOCKER_REGISTRY -p $DOCKER_PASSWORD
+                            docker push $DOCKER_REGISTRY/$IMAGE_NAME:$COMMIT_HASH
+                            docker push $DOCKER_REGISTRY/$IMAGE_NAME:$DOCKER_IMAGE_TAG
                         '''
                         echo 'Docker images pushed successfully'
                     } catch (Exception e) {
-                        echo "Error pushing Docker images: ${e.getMessage()}"
+                        echo "Error in Build, Test and Push stage: ${e.getMessage()}"
                         currentBuild.result = 'FAILURE'
                         throw e
                     }
@@ -227,96 +313,27 @@ pipeline {
         }
 
         stage('Deploy and Verify') {
-            agent { label 'build-node' }
+            agent none
             when { branch 'main' }
             steps {
-                unstash 'source-code'
-                unstash 'jenkins-env'
                 script {
                     try {
-                        bat 'docker pull %DOCKER_REGISTRY%/%IMAGE_NAME%:%DOCKER_IMAGE_TAG%'
-
                         def shopsList = env.SHOPS.split(',')
-                        shopsList.each { shop ->
-                            def shopPort = env."${shop.toUpperCase()}_PORT"
-                            echo "Deploying ${shop} on port ${shopPort}"
+                        def buildNodes = env.DEPLOY_NODES.split(',')
+                        echo "Deploying on nodes: ${buildNodes}"
 
-                            withCredentials([
-                                string(credentialsId: "${shop}-spreadsheet-id", variable: 'SHOP_SPREADSHEET_ID'),
-                                file(credentialsId: 'service-account', variable: 'GOOGLE_SERVICE_ACCOUNT_FILE'),
-                                string(credentialsId: "${shop}-token-yougile", variable: 'TOKEN_YOUGILE'),
-                                string(credentialsId: "${shop}-yougile-chat-id", variable: 'YOUGILE_CHAT_ID'),
-                                // string(credentialsId: 'telegram-bot-token', variable: 'TELEGRAM_BOT_TOKEN'),
-                                // string(credentialsId: "${shop}-telegram-chat-id", variable: 'TELEGRAM_CHAT_ID')
-                            ]) {
-                                // Опциональный thread ID - если credential не существует, переменная будет пустой
-                                def threadIdCredential = ''
-                                try {
-                                    withCredentials([string(credentialsId: "${shop}-telegram-thread-id", variable: 'TELEGRAM_THREAD_ID')]) {
-                                        threadIdCredential = env.TELEGRAM_THREAD_ID
-                                    }
-                                } catch (Exception e) {
-                                    echo "Thread ID credential not found for ${shop}, using main chat"
-                                    threadIdCredential = ''
+                        def deployTasks = buildNodes.collectEntries { nodeName ->
+                            ["Deploy on ${nodeName.trim()}": {
+                                node(nodeName.trim()) {
+                                    unstash 'source-code'
+                                    deployShops(shopsList, env.DOCKER_IMAGE_TAG)
                                 }
-
-                                bat 'copy "%GOOGLE_SERVICE_ACCOUNT_FILE%" service-account.json'
-
-                                bat '''
-                                    if not exist "service-account.json" (
-                                        echo Service account file not found!
-                                        exit /b 1
-                                    )
-                                    for %%F in ("service-account.json") do if %%~zF==0 (
-                                        echo Service account file is empty!
-                                        exit /b 1
-                                    )
-                                '''
-
-                                bat 'docker network inspect cashbook-network || docker network create cashbook-network'
-                                bat "docker rm -f ${shop}_backend_container || exit /b 0"
-
-                                bat """
-                                    docker run --name ${shop}_backend_container ^
-                                        --network cashbook-network ^
-                                        -d -p 0.0.0.0:${shopPort}:${shopPort} ^
-                                        -v "%CD%\\service-account.json:/app/credentials/service-account.json" ^
-                                        -e PORT=${shopPort} ^
-                                        -e GOOGLE_SERVICE_ACCOUNT_KEY=/app/credentials/service-account.json ^
-                                        -e SPREADSHEET_ID=%SHOP_SPREADSHEET_ID% ^
-                                        --restart unless-stopped ^
-                                        -e TOKEN_YOUGILE=%TOKEN_YOUGILE% ^
-                                        -e YOUGILE_CHAT_ID=%YOUGILE_CHAT_ID% ^
-                                        %DOCKER_REGISTRY%/%IMAGE_NAME%:%DOCKER_IMAGE_TAG%
-                                """
-                            }
+                            }]
                         }
 
-                        echo 'Waiting for containers to initialize...'
-                        shopsList.each { shop -> waitForContainer("${shop}_backend_container", 30) }
+                        parallel deployTasks
 
-                        // Health check
-                        shopsList.each { shop ->
-                            def shopPort = env."${shop.toUpperCase()}_PORT"
-                            def healthCheckPassed = false
-                            def maxRetries = 3
-                            def retryCount = 0
-
-                            while (!healthCheckPassed && retryCount < maxRetries) {
-                                try {
-                                    bat "curl -f -m 15 http://127.0.0.1:${shopPort}/api/health"
-                                    healthCheckPassed = true
-                                    echo "Health check passed for ${shop}"
-                                } catch (Exception e) {
-                                    retryCount++
-                                    echo "Health check failed for ${shop}, attempt ${retryCount}/${maxRetries}: ${e.getMessage()}"
-                                    if (retryCount < maxRetries) bat 'timeout /t 10 /nobreak > nul'
-                                    else throw new Exception("Health check failed for ${shop} after ${maxRetries} attempts")
-                                }
-                            }
-                        }
-
-                        echo 'Production containers deployed and verified successfully'
+                        echo 'Production containers deployed and verified successfully on all nodes'
                     } catch (Exception e) {
                         echo "Error in Deploy and Verify stage: ${e.getMessage()}"
                         currentBuild.result = 'FAILURE'
@@ -329,15 +346,21 @@ pipeline {
 
     post {
         always {
-            node('build-node') {
-                script {
-                    try {
-                        bat 'docker rm -f testing_backend_container || exit /b 0'
-                        echo 'Cleanup completed'
-                    } catch (Exception e) {
-                        echo "Error during cleanup: ${e.getMessage()}"
-                    }
+            script {
+                def buildNodes = env.DEPLOY_NODES.split(',')
+                def cleanupTasks = buildNodes.collectEntries { nodeName ->
+                    ["Cleanup on ${nodeName.trim()}": {
+                        node(nodeName.trim()) {
+                            try {
+                                sh 'docker rm -f testing_backend_container || true'
+                                echo "Cleanup completed on ${nodeName.trim()}"
+                            } catch (Exception e) {
+                                echo "Error during cleanup on ${nodeName.trim()}: ${e.getMessage()}"
+                            }
+                        }
+                    }]
                 }
+                parallel cleanupTasks
             }
         }
         failure { echo 'Pipeline failed!' }
