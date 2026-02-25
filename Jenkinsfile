@@ -58,7 +58,8 @@ def deployShops(shopsList, imageTag) {
             }
 
             // Копируем service-account в workspace
-            sh 'cp "$GOOGLE_SERVICE_ACCOUNT_FILE" service-account.json'
+            sh 'chmod -f 644 "$WORKSPACE/service-account.json" || true'
+            writeFile file: 'service-account.json', text: readFile(env.GOOGLE_SERVICE_ACCOUNT_FILE)
 
             // Проверка файла
             sh '''
@@ -132,7 +133,7 @@ pipeline {
 
         // Перечисли все Linux-ноды через запятую — имена нод в Jenkins
         // Например: DEPLOY_NODES = 'linux-node-1,linux-node-2'
-        DEPLOY_NODES = 'yuz1-wsl-node,mkv1-wsl-node'
+        DEPLOY_NODES = 'mkv1-wsl-node,yuz1-wsl-node'
     }
 
     stages {
@@ -233,7 +234,8 @@ pipeline {
                                     threadIdCredential = ''
                                 }
 
-                                sh 'cp "$GOOGLE_SERVICE_ACCOUNT_FILE" service-account.json'
+                                sh 'chmod -f 644 "$WORKSPACE/service-account.json" || true'
+                                writeFile file: 'service-account.json', text: readFile(env.GOOGLE_SERVICE_ACCOUNT_FILE)
 
                                 sh '''
                                     if [ ! -f "service-account.json" ]; then
