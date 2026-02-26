@@ -133,7 +133,7 @@ pipeline {
 
         // Перечисли все Linux-ноды через запятую — имена нод в Jenkins
         // Например: DEPLOY_NODES = 'linux-node-1,linux-node-2'
-        DEPLOY_NODES = 'mkv1-wsl-node,yuz1-wsl-node'
+        DEPLOY_NODES = 'yuz1-linux'
     }
 
     stages {
