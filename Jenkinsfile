@@ -2,35 +2,29 @@
 def waitForContainer(containerName, maxWaitSeconds = 30) {
     def startTime = System.currentTimeMillis()
     def maxWaitMs = maxWaitSeconds * 1000
-
     while (System.currentTimeMillis() - startTime < maxWaitMs) {
         try {
             def containerStatus = sh(
                 script: "docker ps -f name=${containerName} --format '{{.Status}}'",
                 returnStdout: true
             ).trim()
-
             if (containerStatus && !containerStatus.contains('Exit')) {
                 echo "Container ${containerName} is ready: ${containerStatus}"
                 return true
             }
-
             sh 'sleep 2'
         } catch (Exception e) {
             echo "Waiting for container ${containerName} to be ready..."
             sh 'sleep 2'
         }
     }
-
     error "Container ${containerName} failed to become ready within ${maxWaitSeconds} seconds"
 }
 
 // Helper function to deploy shops on the current node
 def deployShops(shopsList, imageTag) {
     sh """
-        # Ensure Docker network exists
         docker network inspect cashbook-network || docker network create cashbook-network
-        # Pull the image
         docker pull \$DOCKER_REGISTRY/\$IMAGE_NAME:${imageTag}
     """
 
@@ -43,43 +37,14 @@ def deployShops(shopsList, imageTag) {
             file(credentialsId: 'service-account', variable: 'GOOGLE_SERVICE_ACCOUNT_FILE'),
             string(credentialsId: "${shop}-token-yougile", variable: 'TOKEN_YOUGILE'),
             string(credentialsId: "${shop}-yougile-chat-id", variable: 'YOUGILE_CHAT_ID'),
-        // string(credentialsId: 'telegram-bot-token', variable: 'TELEGRAM_BOT_TOKEN'),
-        // string(credentialsId: "${shop}-telegram-chat-id", variable: 'TELEGRAM_CHAT_ID')
         ]) {
-            // Опциональный thread ID - если credential не существует, переменная будет пустой
-            def threadIdCredential = ''
-            try {
-                withCredentials([string(credentialsId: "${shop}-telegram-thread-id", variable: 'TELEGRAM_THREAD_ID')]) {
-                    threadIdCredential = env.TELEGRAM_THREAD_ID
-                }
-            } catch (Exception e) {
-                echo "Thread ID credential not found for ${shop}, using main chat"
-                threadIdCredential = ''
-            }
-
-            // Копируем service-account в workspace
-            sh 'chmod -f 644 "$WORKSPACE/service-account.json" || true'
-            writeFile file: 'service-account.json', text: readFile(env.GOOGLE_SERVICE_ACCOUNT_FILE)
-
-            // Проверка файла
-            sh '''
-                if [ ! -f "service-account.json" ]; then
-                    echo "Service account file not found!"
-                    exit 1
-                fi
-                if [ ! -s "service-account.json" ]; then
-                    echo "Service account file is empty!"
-                    exit 1
-                fi
-            '''
-
             sh """
                 docker rm -f ${shop}_backend_container || true
                 docker run --name ${shop}_backend_container \\
                     --network cashbook-network \\
                     --restart unless-stopped \\
                     -d -p 0.0.0.0:${shopPort}:${shopPort} \\
-                    -v "\$(pwd)/service-account.json:/app/credentials/service-account.json" \\
+                    -v "\$GOOGLE_SERVICE_ACCOUNT_FILE:/app/credentials/service-account.json:ro" \\
                     -e PORT=${shopPort} \\
                     -e GOOGLE_SERVICE_ACCOUNT_KEY=/app/credentials/service-account.json \\
                     -e SPREADSHEET_ID=\$SHOP_SPREADSHEET_ID \\
@@ -90,7 +55,7 @@ def deployShops(shopsList, imageTag) {
         }
     }
 
-    // Ждем и проверяем контейнеры
+    // Ждём готовности контейнеров
     shopsList.each { shop ->
         waitForContainer("${shop}_backend_container", 30)
     }
@@ -124,19 +89,16 @@ def deployShops(shopsList, imageTag) {
 
 pipeline {
     agent none
-
     environment {
-        IMAGE_NAME = 'cashbook_backend'
+        IMAGE_NAME      = 'cashbook_backend'
         DOCKER_REGISTRY = credentials('DOCKER_REGISTRY')
         DOCKER_PASSWORD = credentials('DOCKER_PASSWORD')
         DOCKER_IMAGE_TAG = 'latest'
-
-        // Перечисли все Linux-ноды через запятую — имена нод в Jenkins
-        // Например: DEPLOY_NODES = 'linux-node-1,linux-node-2'
-        DEPLOY_NODES = 'yuz1-linux,mkv1-linux'
+        DEPLOY_NODES    = 'yuz1-linux,mkv1-linux'
     }
 
     stages {
+
         stage('Checkout') {
             agent { label 'linux' }
             steps {
@@ -154,32 +116,16 @@ pipeline {
                         echo "Building for commit: ${env.COMMIT_HASH}"
 
                         if (env.BRANCH_NAME == 'test') {
-                            env.SHOPS = 'testing'
-                            env.TESTING_PORT = '3999'
+                            env.SHOPS         = 'testing'
+                            env.TESTING_PORT  = '3999'
                         } else if (env.BRANCH_NAME == 'main') {
-                            env.SHOPS = 'makarov,makarov2,yuz1'
-                            env.MAKAROV_PORT = '5000'
+                            env.SHOPS         = 'makarov,makarov2,yuz1'
+                            env.MAKAROV_PORT  = '5000'
                             env.MAKAROV2_PORT = '5001'
-                            env.YUZ1_PORT = '5002'
+                            env.YUZ1_PORT     = '5002'
                         } else {
-                            echo "Branch ${env.BRANCH_NAME} not configured for deployment"
-                            env.SHOPS = ''
                             error "Branch ${env.BRANCH_NAME} not configured for deployment"
                         }
-
-                        def envVars = "SHOPS='${env.SHOPS}'\n"
-                        if (env.BRANCH_NAME == 'test') {
-                            envVars += "TESTING_PORT='${env.TESTING_PORT}'\n"
-                        } else if (env.BRANCH_NAME == 'main') {
-                            envVars += """
-                                MAKAROV_PORT='${env.MAKAROV_PORT}'
-                                MAKAROV2_PORT='${env.MAKAROV2_PORT}'
-                                YUZ1_PORT='${env.YUZ1_PORT}'
-                            """
-                        }
-
-                        writeFile file: 'jenkins_env.groovy', text: envVars
-                        stash name: 'jenkins-env', includes: 'jenkins_env.groovy'
                     } catch (Exception e) {
                         echo "Error in Configure stage: ${e.getMessage()}"
                         currentBuild.result = 'FAILURE'
@@ -190,7 +136,6 @@ pipeline {
         }
 
         stage('Build, Test and Push') {
-            // Single agent — image must be built and pushed on the same node
             agent { label 'linux' }
             when { branch 'test' }
             steps {
@@ -205,13 +150,11 @@ pipeline {
                         sh 'docker images | grep $IMAGE_NAME'
                         echo 'Docker image built successfully'
 
-                        unstash 'jenkins-env'
                         def shopsList = env.SHOPS.split(',')
 
-                        sh '''
-                            docker network inspect cashbook-network || docker network create cashbook-network
-                        '''
+                        sh 'docker network inspect cashbook-network || docker network create cashbook-network'
 
+                        // Запуск тестовых контейнеров
                         shopsList.each { shop ->
                             def shopPort = env."${shop.toUpperCase()}_PORT"
                             echo "Deploying ${shop} for testing on port ${shopPort}"
@@ -221,39 +164,13 @@ pipeline {
                                 file(credentialsId: 'service-account', variable: 'GOOGLE_SERVICE_ACCOUNT_FILE'),
                                 string(credentialsId: "${shop}-token-yougile", variable: 'TOKEN_YOUGILE'),
                                 string(credentialsId: "${shop}-yougile-chat-id", variable: 'YOUGILE_CHAT_ID'),
-                            // string(credentialsId: 'telegram-bot-token', variable: 'TELEGRAM_BOT_TOKEN'),
-                            // string(credentialsId: "${shop}-telegram-chat-id", variable: 'TELEGRAM_CHAT_ID')
                             ]) {
-                                def threadIdCredential = ''
-                                try {
-                                    withCredentials([string(credentialsId: "${shop}-telegram-thread-id", variable: 'TELEGRAM_THREAD_ID')]) {
-                                        threadIdCredential = env.TELEGRAM_THREAD_ID
-                                    }
-                                } catch (Exception e) {
-                                    echo "Thread ID credential not found for ${shop}, using main chat"
-                                    threadIdCredential = ''
-                                }
-
-                                sh 'chmod -f 644 "$WORKSPACE/service-account.json" || true'
-                                writeFile file: 'service-account.json', text: readFile(env.GOOGLE_SERVICE_ACCOUNT_FILE)
-
-                                sh '''
-                                    if [ ! -f "service-account.json" ]; then
-                                        echo "Service account file not found!"
-                                        exit 1
-                                    fi
-                                    if [ ! -s "service-account.json" ]; then
-                                        echo "Service account file is empty!"
-                                        exit 1
-                                    fi
-                                '''
-
                                 sh """
                                     docker rm -f ${shop}_backend_container || true
                                     docker run --name ${shop}_backend_container \\
                                         --network cashbook-network \\
                                         -d -p 0.0.0.0:${shopPort}:${shopPort} \\
-                                        -v "\$(pwd)/service-account.json:/app/credentials/service-account.json" \\
+                                        -v "\$GOOGLE_SERVICE_ACCOUNT_FILE:/app/credentials/service-account.json:ro" \\
                                         -e PORT=${shopPort} \\
                                         -e GOOGLE_SERVICE_ACCOUNT_KEY=/app/credentials/service-account.json \\
                                         -e SPREADSHEET_ID=\$SHOP_SPREADSHEET_ID \\
@@ -267,9 +184,11 @@ pipeline {
                         echo 'Waiting for containers to initialize...'
                         shopsList.each { shop -> waitForContainer("${shop}_backend_container", 30) }
 
+                        // Health checks
                         shopsList.each { shop ->
                             def shopPort = env."${shop.toUpperCase()}_PORT"
                             echo "Checking health for ${shop} on port ${shopPort}"
+
                             def healthCheckPassed = false
                             def maxRetries = 3
                             def retryCount = 0
@@ -291,13 +210,13 @@ pipeline {
                             }
                         }
 
-                        // Cleanup test containers
+                        // Удаляем тестовые контейнеры
                         shopsList.each { shop ->
                             sh "docker rm -f ${shop}_backend_container || true"
                             echo "Cleaned up test container for ${shop}"
                         }
 
-                        // Push on the same node where image was built
+                        // Push образов
                         echo 'Pushing Docker image to Docker Hub'
                         sh '''
                             docker login -u $DOCKER_REGISTRY -p $DOCKER_PASSWORD
@@ -305,6 +224,7 @@ pipeline {
                             docker push $DOCKER_REGISTRY/$IMAGE_NAME:$DOCKER_IMAGE_TAG
                         '''
                         echo 'Docker images pushed successfully'
+
                     } catch (Exception e) {
                         echo "Error in Build, Test and Push stage: ${e.getMessage()}"
                         currentBuild.result = 'FAILURE'
@@ -320,7 +240,7 @@ pipeline {
             steps {
                 script {
                     try {
-                        def shopsList = env.SHOPS.split(',')
+                        def shopsList  = env.SHOPS.split(',')
                         def buildNodes = env.DEPLOY_NODES.split(',')
                         echo "Deploying on nodes: ${buildNodes}"
 
@@ -332,7 +252,6 @@ pipeline {
                                 }
                             }]
                         }
-
                         parallel deployTasks
 
                         echo 'Production containers deployed and verified successfully on all nodes'
@@ -349,7 +268,7 @@ pipeline {
     post {
         always {
             script {
-                def buildNodes = env.DEPLOY_NODES.split(',')
+                def buildNodes   = env.DEPLOY_NODES.split(',')
                 def cleanupTasks = buildNodes.collectEntries { nodeName ->
                     ["Cleanup on ${nodeName.trim()}": {
                         node(nodeName.trim()) {
