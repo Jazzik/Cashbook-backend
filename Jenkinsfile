@@ -55,12 +55,10 @@ def deployShops(shopsList, imageTag) {
         }
     }
 
-    // Ждём готовности контейнеров
     shopsList.each { shop ->
         waitForContainer("${shop}_backend_container", 30)
     }
 
-    // Health check с retry
     shopsList.each { shop ->
         def shopPort = env."${shop.toUpperCase()}_PORT"
         echo "Health check for ${shop} on port ${shopPort}"
@@ -90,11 +88,11 @@ def deployShops(shopsList, imageTag) {
 pipeline {
     agent none
     environment {
-        IMAGE_NAME      = 'cashbook_backend'
-        DOCKER_REGISTRY = credentials('DOCKER_REGISTRY')
-        DOCKER_PASSWORD = credentials('DOCKER_PASSWORD')
+        IMAGE_NAME       = 'cashbook_backend'
+        DOCKER_REGISTRY  = credentials('DOCKER_REGISTRY')
+        DOCKER_PASSWORD  = credentials('DOCKER_PASSWORD')
         DOCKER_IMAGE_TAG = 'latest'
-        DEPLOY_NODES    = 'yuz1-linux,mkv1-linux'
+        DEPLOY_NODES     = 'yuz1-linux,mkv1-linux'
     }
 
     stages {
@@ -116,8 +114,8 @@ pipeline {
                         echo "Building for commit: ${env.COMMIT_HASH}"
 
                         if (env.BRANCH_NAME == 'test') {
-                            env.SHOPS         = 'testing'
-                            env.TESTING_PORT  = '3999'
+                            env.SHOPS        = 'testing'
+                            env.TESTING_PORT = '3999'
                         } else if (env.BRANCH_NAME == 'main') {
                             env.SHOPS         = 'makarov,makarov2,yuz1'
                             env.MAKAROV_PORT  = '5000'
@@ -154,7 +152,6 @@ pipeline {
 
                         sh 'docker network inspect cashbook-network || docker network create cashbook-network'
 
-                        // Запуск тестовых контейнеров
                         shopsList.each { shop ->
                             def shopPort = env."${shop.toUpperCase()}_PORT"
                             echo "Deploying ${shop} for testing on port ${shopPort}"
@@ -184,7 +181,6 @@ pipeline {
                         echo 'Waiting for containers to initialize...'
                         shopsList.each { shop -> waitForContainer("${shop}_backend_container", 30) }
 
-                        // Health checks
                         shopsList.each { shop ->
                             def shopPort = env."${shop.toUpperCase()}_PORT"
                             echo "Checking health for ${shop} on port ${shopPort}"
@@ -210,13 +206,11 @@ pipeline {
                             }
                         }
 
-                        // Удаляем тестовые контейнеры
                         shopsList.each { shop ->
                             sh "docker rm -f ${shop}_backend_container || true"
                             echo "Cleaned up test container for ${shop}"
                         }
 
-                        // Push образов
                         echo 'Pushing Docker image to Docker Hub'
                         sh '''
                             docker login -u $DOCKER_REGISTRY -p $DOCKER_PASSWORD
@@ -247,6 +241,7 @@ pipeline {
                         def deployTasks = buildNodes.collectEntries { nodeName ->
                             ["Deploy on ${nodeName.trim()}": {
                                 node(nodeName.trim()) {
+                                    deleteDir()
                                     unstash 'source-code'
                                     deployShops(shopsList, env.DOCKER_IMAGE_TAG)
                                 }
@@ -268,20 +263,12 @@ pipeline {
     post {
         always {
             script {
-                def buildNodes   = env.DEPLOY_NODES.split(',')
-                def cleanupTasks = buildNodes.collectEntries { nodeName ->
-                    ["Cleanup on ${nodeName.trim()}": {
-                        node(nodeName.trim()) {
-                            try {
-                                sh 'docker rm -f testing_backend_container || true'
-                                echo "Cleanup completed on ${nodeName.trim()}"
-                            } catch (Exception e) {
-                                echo "Error during cleanup on ${nodeName.trim()}: ${e.getMessage()}"
-                            }
-                        }
-                    }]
+                if (env.BRANCH_NAME == 'test') {
+                    node('linux') {
+                        sh 'docker rm -f testing_backend_container || true'
+                        echo 'Cleaned up test container'
+                    }
                 }
-                parallel cleanupTasks
             }
         }
         failure { echo 'Pipeline failed!' }
