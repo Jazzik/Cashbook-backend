@@ -85,7 +85,12 @@ const upload = multer({
 
 // Google Sheets API setup
 const auth = new google.auth.GoogleAuth({
-    keyFile: process.env.GOOGLE_SERVICE_ACCOUNT_KEY || '',
+    credentials: process.env.GOOGLE_SERVICE_ACCOUNT_JSON 
+        ? JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON) 
+        : undefined,
+    keyFile: process.env.GOOGLE_SERVICE_ACCOUNT_JSON 
+        ? undefined 
+        : (process.env.GOOGLE_SERVICE_ACCOUNT_KEY || ''),
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
 });
 

@@ -44,9 +44,8 @@ def deployShops(shopsList, imageTag) {
                     --network cashbook-network \\
                     --restart unless-stopped \\
                     -d -p 0.0.0.0:${shopPort}:${shopPort} \\
-                    -v "\$GOOGLE_SERVICE_ACCOUNT_FILE:/app/credentials/service-account.json:ro" \\
                     -e PORT=${shopPort} \\
-                    -e GOOGLE_SERVICE_ACCOUNT_KEY=/app/credentials/service-account.json \\
+                    -e GOOGLE_SERVICE_ACCOUNT_JSON="\$(cat \$GOOGLE_SERVICE_ACCOUNT_FILE)" \\
                     -e SPREADSHEET_ID=\$SHOP_SPREADSHEET_ID \\
                     -e TOKEN_YOUGILE=\$TOKEN_YOUGILE \\
                     -e YOUGILE_CHAT_ID=\$YOUGILE_CHAT_ID \\
@@ -167,9 +166,8 @@ pipeline {
                                     docker run --name ${shop}_backend_container \\
                                         --network cashbook-network \\
                                         -d -p 0.0.0.0:${shopPort}:${shopPort} \\
-                                        -v "\$GOOGLE_SERVICE_ACCOUNT_FILE:/app/credentials/service-account.json:ro" \\
                                         -e PORT=${shopPort} \\
-                                        -e GOOGLE_SERVICE_ACCOUNT_KEY=/app/credentials/service-account.json \\
+                                        -e GOOGLE_SERVICE_ACCOUNT_JSON="\$(cat \$GOOGLE_SERVICE_ACCOUNT_FILE)" \\
                                         -e SPREADSHEET_ID=\$SHOP_SPREADSHEET_ID \\
                                         -e TOKEN_YOUGILE=\$TOKEN_YOUGILE \\
                                         -e YOUGILE_CHAT_ID=\$YOUGILE_CHAT_ID \\
