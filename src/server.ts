@@ -97,6 +97,134 @@ const auth = new google.auth.GoogleAuth({
 const sheets = google.sheets({ version: 'v4', auth });
 const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
 
+// ── YouGile webhook relay ────────────────────────────────────────────────────
+
+interface YouGileWebhookPayload {
+    event?: string;
+    type?: string;
+    object?: YouGileMessageObject;
+    data?: YouGileMessageObject;
+    [key: string]: any;
+}
+
+interface YouGileMessageObject {
+    id?: string | number;
+    text?: string;
+    textHtml?: string;
+    fromUserId?: string;
+    from_user_id?: string;
+    chatId?: string;
+    chat_id?: string;
+    deleted?: boolean;
+    [key: string]: any;
+}
+
+async function setupYougileWebhook(): Promise<void> {
+    const subscribeChat = process.env.YOUGILE_SUBSCRIBE_CHAT_ID;
+    const webhookBaseUrl = process.env.YOUGILE_WEBHOOK_URL;
+    const token = process.env.TOKEN_YOUGILE;
+
+    if (!subscribeChat || !webhookBaseUrl || !token) {
+        console.warn('⚠️  YouGile webhook relay не настроен: укажите YOUGILE_SUBSCRIBE_CHAT_ID и YOUGILE_WEBHOOK_URL');
+        return;
+    }
+
+    const webhookEndpoint = `${webhookBaseUrl.replace(/\/$/, '')}/api/yougile-webhook`;
+
+    try {
+        // Check existing webhooks to avoid duplicates
+        const listResp = await fetch('https://ru.yougile.com/api-v2/webhooks', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (listResp.ok) {
+            const listData = await listResp.json() as { content?: any[] };
+            const existing = (listData.content || listData as any[]).find?.(
+                (w: any) => w.url === webhookEndpoint && w.event === 'chat_message-created' && !w.deleted
+            );
+            if (existing) {
+                console.log(`✅ YouGile webhook уже зарегистрирован (id: ${existing.id})`);
+                return;
+            }
+        }
+
+        // Register new webhook
+        const createResp = await fetch('https://ru.yougile.com/api-v2/webhooks', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                url: webhookEndpoint,
+                event: 'chat_message-created',
+                filters: [
+                    { name: 'location', value: [subscribeChat] }
+                ]
+            })
+        });
+
+        const result = await createResp.json() as { id?: string };
+        if (createResp.status === 201 && result.id) {
+            console.log(`✅ YouGile webhook зарегистрирован (id: ${result.id}), слушаем чат: ${subscribeChat}`);
+        } else {
+            console.error('❌ Ошибка регистрации YouGile webhook:', result);
+        }
+    } catch (err: any) {
+        console.error('❌ Не удалось настроить YouGile webhook:', err.message);
+    }
+}
+
+// Webhook endpoint — receives YouGile events
+app.post('/api/yougile-webhook', async (req, res) => {
+    // Respond immediately so YouGile doesn't retry
+    res.status(200).json({ ok: true });
+
+    const payload = req.body as YouGileWebhookPayload;
+    const token = process.env.TOKEN_YOUGILE;
+    const targetChatId = process.env.YOUGILE_CHAT_ID;
+    const botUserId = process.env.YOUGILE_BOT_USER_ID;
+
+    if (!token || !targetChatId) return;
+
+    // Normalise payload — YouGile may wrap the object in different fields
+    const msgData: YouGileMessageObject = payload.object || payload.data || payload;
+    const fromUserId: string | undefined = msgData.fromUserId || msgData.from_user_id;
+    const text: string = msgData.text || '';
+    const textHtml: string = msgData.textHtml || '';
+
+    // Skip deleted messages or empty text
+    if (msgData.deleted || (!text && !textHtml)) return;
+
+    // Skip messages sent by the bot itself
+    if (botUserId && fromUserId && fromUserId === botUserId) return;
+
+    console.log(`📨 YouGile relay: сообщение от ${fromUserId ?? 'unknown'} → пересылаем в ${targetChatId}`);
+
+    try {
+        const fwdResp = await fetch(`https://ru.yougile.com/api-v2/chats/${targetChatId}/messages`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                text: text || 'forwarded message',
+                ...(textHtml ? { textHtml } : {})
+            })
+        });
+
+        if (!fwdResp.ok) {
+            const errBody = await fwdResp.text();
+            console.error(`❌ Ошибка пересылки сообщения (${fwdResp.status}):`, errBody);
+        }
+    } catch (err: any) {
+        console.error('❌ Не удалось переслать сообщение:', err.message);
+    }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 // Routes
 app.post('/api/shift-data', upload.single('screenshot'), async (req, res) => {
     try {
@@ -338,6 +466,11 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`- SPREADSHEET_ID: ${process.env.SPREADSHEET_ID}`);
     console.log(`- YOUGILE_CHAT_ID: ${process.env.YOUGILE_CHAT_ID ? 'Set' : 'Not set'}`);
     console.log(`- TOKEN_YOUGILE: ${process.env.TOKEN_YOUGILE ? 'Set' : 'Not set'}`);
+    console.log(`- YOUGILE_SUBSCRIBE_CHAT_ID: ${process.env.YOUGILE_SUBSCRIBE_CHAT_ID ? 'Set' : 'Not set'}`);
+    console.log(`- YOUGILE_WEBHOOK_URL: ${process.env.YOUGILE_WEBHOOK_URL || 'Not set'}`);
+    console.log(`- YOUGILE_BOT_USER_ID: ${process.env.YOUGILE_BOT_USER_ID ? 'Set' : 'Not set (all messages will be forwarded)'}`);
+
+    setupYougileWebhook();
 
     // Check if service account file exists
     try {
