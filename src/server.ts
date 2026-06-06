@@ -111,7 +111,28 @@ interface YouGileMessagesResponse {
     content?: YouGileMessage[];
 }
 
-let lastSeenMessageId: number | null = null;
+const POLL_STATE_FILE = path.join(__dirname, '../data/yougile_poll_state.json');
+
+function loadLastSeenId(): number | null {
+    try {
+        const raw = fs.readFileSync(POLL_STATE_FILE, 'utf8');
+        const parsed = JSON.parse(raw);
+        return typeof parsed.lastSeenMessageId === 'number' ? parsed.lastSeenMessageId : null;
+    } catch {
+        return null;
+    }
+}
+
+function saveLastSeenId(id: number): void {
+    try {
+        fs.mkdirSync(path.dirname(POLL_STATE_FILE), { recursive: true });
+        fs.writeFileSync(POLL_STATE_FILE, JSON.stringify({ lastSeenMessageId: id }), 'utf8');
+    } catch (err: any) {
+        console.error('❌ Не удалось сохранить состояние polling:', err.message);
+    }
+}
+
+let lastSeenMessageId: number | null = loadLastSeenId();
 
 async function pollYougileMessages(): Promise<void> {
     const subscribeChat = process.env.YOUGILE_SUBSCRIBE_CHAT_ID;
@@ -144,10 +165,11 @@ async function pollYougileMessages(): Promise<void> {
 
         const maxId = messages.reduce((max, m) => Math.max(max, toNumber(m.id)), 0);
 
-        // First poll — set baseline, don't forward old messages
+        // First ever launch — set baseline so we don't flood with history
         if (lastSeenMessageId === null) {
             lastSeenMessageId = maxId;
-            console.log(`✅ YouGile polling запущен, последнее сообщение id=${lastSeenMessageId}`);
+            saveLastSeenId(maxId);
+            console.log(`✅ YouGile polling запущен впервые, baseline id=${lastSeenMessageId}`);
             return;
         }
 
@@ -157,7 +179,9 @@ async function pollYougileMessages(): Promise<void> {
 
         if (newMessages.length === 0) return;
 
+        // Update persisted state before forwarding to avoid re-sending on crash
         lastSeenMessageId = maxId;
+        saveLastSeenId(maxId);
 
         for (const msg of newMessages) {
             if (msg.deleted || (!msg.text && !msg.textHtml)) continue;
