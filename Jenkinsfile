@@ -38,7 +38,7 @@ def deployShops(shopsList, imageTag) {
             string(credentialsId: "${shop}-token-yougile", variable: 'TOKEN_YOUGILE'),
             string(credentialsId: "${shop}-yougile-chat-id", variable: 'YOUGILE_CHAT_ID'),
             string(credentialsId: "${shop}-yougile-subscribe-chat-id", variable: 'YOUGILE_SUBSCRIBE_CHAT_ID', defaultValue: ''),
-            string(credentialsId: "${shop}-yougile-webhook-url", variable: 'YOUGILE_WEBHOOK_URL', defaultValue: ''),
+            string(credentialsId: "${shop}-yougile-poll-interval-ms", variable: 'YOUGILE_POLL_INTERVAL_MS', defaultValue: '15000'),
             string(credentialsId: "${shop}-yougile-bot-user-id", variable: 'YOUGILE_BOT_USER_ID', defaultValue: ''),
         ]) {
             sh """
@@ -53,7 +53,7 @@ def deployShops(shopsList, imageTag) {
                     -e TOKEN_YOUGILE=\$TOKEN_YOUGILE \\
                     -e YOUGILE_CHAT_ID=\$YOUGILE_CHAT_ID \\
                     -e YOUGILE_SUBSCRIBE_CHAT_ID=\$YOUGILE_SUBSCRIBE_CHAT_ID \\
-                    -e YOUGILE_WEBHOOK_URL=\$YOUGILE_WEBHOOK_URL \\
+                    -e YOUGILE_POLL_INTERVAL_MS=\$YOUGILE_POLL_INTERVAL_MS \\
                     -e YOUGILE_BOT_USER_ID=\$YOUGILE_BOT_USER_ID \\
                     \$DOCKER_REGISTRY/\$IMAGE_NAME:${imageTag}
             """
@@ -167,7 +167,7 @@ pipeline {
                                 string(credentialsId: "${shop}-token-yougile", variable: 'TOKEN_YOUGILE'),
                                 string(credentialsId: "${shop}-yougile-chat-id", variable: 'YOUGILE_CHAT_ID'),
                                 string(credentialsId: "${shop}-yougile-subscribe-chat-id", variable: 'YOUGILE_SUBSCRIBE_CHAT_ID', defaultValue: ''),
-                                string(credentialsId: "${shop}-yougile-webhook-url", variable: 'YOUGILE_WEBHOOK_URL', defaultValue: ''),
+                                string(credentialsId: "${shop}-yougile-poll-interval-ms", variable: 'YOUGILE_POLL_INTERVAL_MS', defaultValue: '15000'),
                                 string(credentialsId: "${shop}-yougile-bot-user-id", variable: 'YOUGILE_BOT_USER_ID', defaultValue: ''),
                             ]) {
                                 sh """
@@ -181,7 +181,7 @@ pipeline {
                                         -e TOKEN_YOUGILE=\$TOKEN_YOUGILE \\
                                         -e YOUGILE_CHAT_ID=\$YOUGILE_CHAT_ID \\
                                         -e YOUGILE_SUBSCRIBE_CHAT_ID=\$YOUGILE_SUBSCRIBE_CHAT_ID \\
-                                        -e YOUGILE_WEBHOOK_URL=\$YOUGILE_WEBHOOK_URL \\
+                                        -e YOUGILE_POLL_INTERVAL_MS=\$YOUGILE_POLL_INTERVAL_MS \\
                                         -e YOUGILE_BOT_USER_ID=\$YOUGILE_BOT_USER_ID \\
                                         \$DOCKER_REGISTRY/\$IMAGE_NAME:\$DOCKER_IMAGE_TAG
                                 """
