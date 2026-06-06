@@ -55,12 +55,12 @@ def deployShops(shopsList, imageTag) {
         ]) {
             sh """
                 docker rm -f ${shop}_backend_container || true
-                mkdir -p /opt/cashbook/${shop}
+                mkdir -p \$HOME/cashbook/${shop}
                 docker run --name ${shop}_backend_container \\
                     --network cashbook-network \\
                     --restart unless-stopped \\
                     -d -p 0.0.0.0:${shopPort}:${shopPort} \\
-                    -v /opt/cashbook/${shop}:/app/data \\
+                    -v \$HOME/cashbook/${shop}:/app/data \\
                     -e PORT=${shopPort} \\
                     -e GOOGLE_SERVICE_ACCOUNT_JSON="\$(cat \$GOOGLE_SERVICE_ACCOUNT_FILE)" \\
                     -e SPREADSHEET_ID=\$SHOP_SPREADSHEET_ID \\
