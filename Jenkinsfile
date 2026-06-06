@@ -1,3 +1,14 @@
+// Returns credential value or fallback if the credential doesn't exist
+def getOptionalCredential(credId, fallback = '') {
+    try {
+        withCredentials([string(credentialsId: credId, variable: 'OPT_CRED')]) {
+            return env.OPT_CRED ?: fallback
+        }
+    } catch (e) {
+        return fallback
+    }
+}
+
 // Helper function to wait for container readiness
 def waitForContainer(containerName, maxWaitSeconds = 30) {
     def startTime = System.currentTimeMillis()
@@ -32,14 +43,15 @@ def deployShops(shopsList, imageTag) {
         def shopPort = env."${shop.toUpperCase()}_PORT"
         echo "Deploying ${shop} on port ${shopPort}"
 
+        def subscribeChat = getOptionalCredential("${shop}-yougile-subscribe-chat-id")
+        def pollInterval  = getOptionalCredential("${shop}-yougile-poll-interval-ms", '15000')
+        def botUserId     = getOptionalCredential("${shop}-yougile-bot-user-id")
+
         withCredentials([
             string(credentialsId: "${shop}-spreadsheet-id", variable: 'SHOP_SPREADSHEET_ID'),
             file(credentialsId: 'service-account', variable: 'GOOGLE_SERVICE_ACCOUNT_FILE'),
             string(credentialsId: "${shop}-token-yougile", variable: 'TOKEN_YOUGILE'),
             string(credentialsId: "${shop}-yougile-chat-id", variable: 'YOUGILE_CHAT_ID'),
-            string(credentialsId: "${shop}-yougile-subscribe-chat-id", variable: 'YOUGILE_SUBSCRIBE_CHAT_ID', defaultValue: ''),
-            string(credentialsId: "${shop}-yougile-poll-interval-ms", variable: 'YOUGILE_POLL_INTERVAL_MS', defaultValue: '15000'),
-            string(credentialsId: "${shop}-yougile-bot-user-id", variable: 'YOUGILE_BOT_USER_ID', defaultValue: ''),
         ]) {
             sh """
                 docker rm -f ${shop}_backend_container || true
@@ -54,9 +66,9 @@ def deployShops(shopsList, imageTag) {
                     -e SPREADSHEET_ID=\$SHOP_SPREADSHEET_ID \\
                     -e TOKEN_YOUGILE=\$TOKEN_YOUGILE \\
                     -e YOUGILE_CHAT_ID=\$YOUGILE_CHAT_ID \\
-                    -e YOUGILE_SUBSCRIBE_CHAT_ID=\$YOUGILE_SUBSCRIBE_CHAT_ID \\
-                    -e YOUGILE_POLL_INTERVAL_MS=\$YOUGILE_POLL_INTERVAL_MS \\
-                    -e YOUGILE_BOT_USER_ID=\$YOUGILE_BOT_USER_ID \\
+                    -e YOUGILE_SUBSCRIBE_CHAT_ID=${subscribeChat} \\
+                    -e YOUGILE_POLL_INTERVAL_MS=${pollInterval} \\
+                    -e YOUGILE_BOT_USER_ID=${botUserId} \\
                     \$DOCKER_REGISTRY/\$IMAGE_NAME:${imageTag}
             """
         }
@@ -163,14 +175,15 @@ pipeline {
                             def shopPort = env."${shop.toUpperCase()}_PORT"
                             echo "Deploying ${shop} for testing on port ${shopPort}"
 
+                            def subscribeChat = getOptionalCredential("${shop}-yougile-subscribe-chat-id")
+                            def pollInterval  = getOptionalCredential("${shop}-yougile-poll-interval-ms", '15000')
+                            def botUserId     = getOptionalCredential("${shop}-yougile-bot-user-id")
+
                             withCredentials([
                                 string(credentialsId: "${shop}-spreadsheet-id", variable: 'SHOP_SPREADSHEET_ID'),
                                 file(credentialsId: 'service-account', variable: 'GOOGLE_SERVICE_ACCOUNT_FILE'),
                                 string(credentialsId: "${shop}-token-yougile", variable: 'TOKEN_YOUGILE'),
                                 string(credentialsId: "${shop}-yougile-chat-id", variable: 'YOUGILE_CHAT_ID'),
-                                string(credentialsId: "${shop}-yougile-subscribe-chat-id", variable: 'YOUGILE_SUBSCRIBE_CHAT_ID', defaultValue: ''),
-                                string(credentialsId: "${shop}-yougile-poll-interval-ms", variable: 'YOUGILE_POLL_INTERVAL_MS', defaultValue: '15000'),
-                                string(credentialsId: "${shop}-yougile-bot-user-id", variable: 'YOUGILE_BOT_USER_ID', defaultValue: ''),
                             ]) {
                                 sh """
                                     docker rm -f ${shop}_backend_container || true
@@ -182,9 +195,9 @@ pipeline {
                                         -e SPREADSHEET_ID=\$SHOP_SPREADSHEET_ID \\
                                         -e TOKEN_YOUGILE=\$TOKEN_YOUGILE \\
                                         -e YOUGILE_CHAT_ID=\$YOUGILE_CHAT_ID \\
-                                        -e YOUGILE_SUBSCRIBE_CHAT_ID=\$YOUGILE_SUBSCRIBE_CHAT_ID \\
-                                        -e YOUGILE_POLL_INTERVAL_MS=\$YOUGILE_POLL_INTERVAL_MS \\
-                                        -e YOUGILE_BOT_USER_ID=\$YOUGILE_BOT_USER_ID \\
+                                        -e YOUGILE_SUBSCRIBE_CHAT_ID=${subscribeChat} \\
+                                        -e YOUGILE_POLL_INTERVAL_MS=${pollInterval} \\
+                                        -e YOUGILE_BOT_USER_ID=${botUserId} \\
                                         \$DOCKER_REGISTRY/\$IMAGE_NAME:\$DOCKER_IMAGE_TAG
                                 """
                             }
