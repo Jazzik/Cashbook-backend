@@ -136,7 +136,9 @@ pipeline {
                             env.SHOPS        = 'testing'
                             env.TESTING_PORT = '3999'
                         } else if (env.BRANCH_NAME == 'main') {
-                            env.SHOPS         = 'makarov,makarov2,yuz1'
+                            // Each node deploys only its own shops to prevent duplicate polling
+                            env.YUZ1_LINUX_SHOPS  = 'yuz1'
+                            env.MKV1_LINUX_SHOPS  = 'makarov,makarov2'
                             env.MAKAROV_PORT  = '5000'
                             env.MAKAROV2_PORT = '5001'
                             env.YUZ1_PORT     = '5002'
@@ -259,16 +261,27 @@ pipeline {
             steps {
                 script {
                     try {
-                        def shopsList  = env.SHOPS.split(',')
-                        def buildNodes = env.DEPLOY_NODES.split(',')
-                        echo "Deploying on nodes: ${buildNodes}"
+                        // Each node deploys only its own shops and removes any stray containers
+                        // that were previously deployed there but no longer belong to this node.
+                        def allShops = ['makarov', 'makarov2', 'yuz1']
+                        def nodeShopsMap = [
+                            'yuz1-linux': env.YUZ1_LINUX_SHOPS.split(',').toList(),
+                            'mkv1-linux': env.MKV1_LINUX_SHOPS.split(',').toList()
+                        ]
+                        echo "Deploying: ${nodeShopsMap}"
 
-                        def deployTasks = buildNodes.collectEntries { nodeName ->
-                            ["Deploy on ${nodeName.trim()}": {
-                                node(nodeName.trim()) {
+                        def deployTasks = nodeShopsMap.collectEntries { nodeName, shops ->
+                            ["Deploy on ${nodeName}": {
+                                node(nodeName) {
+                                    // Remove containers that don't belong on this node
+                                    def stray = allShops - shops
+                                    stray.each { s ->
+                                        sh "docker rm -f ${s}_backend_container || true"
+                                        echo "Removed stray container: ${s}_backend_container"
+                                    }
                                     deleteDir()
                                     unstash 'source-code'
-                                    deployShops(shopsList, env.DOCKER_IMAGE_TAG)
+                                    deployShops(shops, env.DOCKER_IMAGE_TAG)
                                 }
                             }]
                         }
