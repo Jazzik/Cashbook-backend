@@ -32,6 +32,21 @@ def waitForContainer(containerName, maxWaitSeconds = 30) {
     error "Container ${containerName} failed to become ready within ${maxWaitSeconds} seconds"
 }
 
+// Creates a deploy closure with properly scoped variables to avoid Jenkins CPS closure capture bug.
+// Using a method ensures each invocation gets its own stack frame — collectEntries closures do not.
+def makeDeployTask(String nodeName, List shops, String imageTag) {
+    def allShops = ['makarov', 'makarov2', 'yuz1']
+    def stray = allShops - shops
+    return {
+        node(nodeName) {
+            stray.each { s -> sh "docker rm -f ${s}_backend_container || true" }
+            deleteDir()
+            unstash 'source-code'
+            deployShops(shops, imageTag)
+        }
+    }
+}
+
 // Helper function to deploy shops on the current node
 def deployShops(shopsList, imageTag) {
     sh """
@@ -136,7 +151,6 @@ pipeline {
                             env.SHOPS        = 'testing'
                             env.TESTING_PORT = '3999'
                         } else if (env.BRANCH_NAME == 'main') {
-                            // Each node deploys only its own shops to prevent duplicate polling
                             env.YUZ1_LINUX_SHOPS  = 'yuz1'
                             env.MKV1_LINUX_SHOPS  = 'makarov,makarov2'
                             env.MAKAROV_PORT  = '5000'
@@ -261,29 +275,13 @@ pipeline {
             steps {
                 script {
                     try {
-                        // Each node deploys only its own shops and removes any stray containers
-                        // that were previously deployed there but no longer belong to this node.
-                        def allShops = ['makarov', 'makarov2', 'yuz1']
                         def nodeShopsMap = [
-                            'yuz1-linux': env.YUZ1_LINUX_SHOPS.split(',').toList(),
-                            'mkv1-linux': env.MKV1_LINUX_SHOPS.split(',').toList()
+                            'yuz1-linux': env.YUZ1_LINUX_SHOPS.tokenize(','),
+                            'mkv1-linux': env.MKV1_LINUX_SHOPS.tokenize(',')
                         ]
-                        echo "Deploying: ${nodeShopsMap}"
-
-                        def deployTasks = nodeShopsMap.collectEntries { nodeName, shops ->
-                            ["Deploy on ${nodeName}": {
-                                node(nodeName) {
-                                    // Remove containers that don't belong on this node
-                                    def stray = allShops - shops
-                                    stray.each { s ->
-                                        sh "docker rm -f ${s}_backend_container || true"
-                                        echo "Removed stray container: ${s}_backend_container"
-                                    }
-                                    deleteDir()
-                                    unstash 'source-code'
-                                    deployShops(shops, env.DOCKER_IMAGE_TAG)
-                                }
-                            }]
+                        def deployTasks = [:]
+                        nodeShopsMap.each { nodeName, shops ->
+                            deployTasks["Deploy on ${nodeName}"] = makeDeployTask(nodeName, shops, env.DOCKER_IMAGE_TAG)
                         }
                         parallel deployTasks
 
